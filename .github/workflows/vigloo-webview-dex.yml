@@ -33,7 +33,7 @@ jobs:
           python3 - <<'PY'
           import hashlib,struct,zlib
           b=open('build/dex/classes.dex','rb').read()
-          assert b[:8] == b'dex\\n035\\0' or b.startswith(b'dex\\n')
+          assert b[:4] == bytes((100,101,120,10)) and b[7] == 0
           assert struct.unpack_from('<I',b,8)[0] == zlib.adler32(b[12:]) & 0xffffffff
           assert b[12:32] == hashlib.sha1(b[32:]).digest()
           print('DEX validado; bytes',len(b),'classes',struct.unpack_from('<I',b,0x60)[0])
