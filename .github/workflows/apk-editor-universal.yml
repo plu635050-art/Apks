@@ -35,12 +35,11 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Instalar Android API 37
         run: |
-          sdkmanager --install 'platforms;android-37' 'platform-tools' 'build-tools;37.0.0'
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' | sort -V | tail -n 1)
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" --install 'platforms;android-37' 'platform-tools' 'build-tools;37.0.0'
 
       - name: Obter codigo-fonte aberto (GPL-3.0)
         run: |
