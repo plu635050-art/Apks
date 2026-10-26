@@ -43,6 +43,10 @@ jobs:
           test -f apkEditorPro/build.gradle
           test -f apkEditorPro/src/main/jni/Android.mk
           echo "Fonte original: ${ORIGIN} @ ${REVISION}" >> "$GITHUB_STEP_SUMMARY"
+      - name: Compilar mycp nativo 32 e 64 bits e corrigir selecao por ABI
+        shell: bash
+        run: |
+          python3 scripts/preparar_mycp_abis.py original
       - name: Compilar editor classico com bibliotecas de quatro ABIs
         shell: bash
         run: |
