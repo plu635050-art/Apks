@@ -35,11 +35,11 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Instalar Android API 37
+      - name: Instalar Android API 36
         run: |
           SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' | sort -V | tail -n 1)
           test -x "$SDKMANAGER"
-          "$SDKMANAGER" --install 'platforms;android-37' 'platform-tools' 'build-tools;37.0.0'
+          "$SDKMANAGER" --install 'platforms;android-36' 'platform-tools' 'build-tools;36.0.0'
 
       - name: Obter codigo-fonte aberto (GPL-3.0)
         run: |
@@ -49,6 +49,7 @@ jobs:
           test -f LICENSE
           test -f gradlew
           test -f app/build.gradle
+          sed -i 's/compileSdkVersion 37/compileSdkVersion 36/; s/targetSdk 37/targetSdk 36/' app/build.gradle
           echo "Codigo-fonte: $REVISION" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Compilar APK para testes
