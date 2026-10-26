@@ -29,7 +29,7 @@ for apk in apks:
      raise SystemExit(f'FALHA: ferramenta {p} ausente')
   for tool in sorted(x for x in names if x.startswith('assets/') and (x.endswith('/aapt') or x.endswith('/aapt2') or x.endswith('/mycp') or x in ('assets/mycp','assets/aapt'))):
    blob=z.read(tool)
-   if blob[:4]==b'\\x7fELF' and len(blob)>20:
+   if blob[:4]==bytes((127,69,76,70)) and len(blob)>20:
     cls='64' if blob[4]==2 else '32'
     arch={40:'ARM',183:'ARM64',3:'x86',62:'x86_64'}.get(int.from_bytes(blob[18:20],'little'),'desconhecida')
     out.append(f'  {tool}: ELF{cls} {arch}')
