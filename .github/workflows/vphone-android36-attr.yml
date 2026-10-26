@@ -1,0 +1,27 @@
+name: Android 36 pageSizeCompat attribute audit
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: SDK 36 and aapt2
+        run: |
+          set -euxo pipefail
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' | sort -V | tail -n 1)
+          "$SDKMANAGER" --install 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Compile and inspect an isolated example
+        run: |
+          set -euxo pipefail
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" link -o example.apk --manifest vphone-page-audit/AndroidManifest.xml -I "$ANDROID_HOME/platforms/android-36/android.jar"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump xmltree example.apk --file AndroidManifest.xml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Android36-Manifest-Example
+          path: example.apk
+          retention-days: 1
