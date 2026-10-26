@@ -1,6 +1,8 @@
 name: APK Editor Universal - LAB 1
 
 on:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
     inputs:
       variante:
@@ -55,7 +57,7 @@ jobs:
         run: |
           cd source
           chmod +x ./gradlew
-          if [ '${{ inputs.variante }}' = 'full' ]; then
+          if [ '${{ inputs.variante || 'full' }}' = 'full' ]; then
             ./gradlew :app:assembleFullDebug --no-daemon --stacktrace
           else
             ./gradlew :app:assemblePlayDebug --no-daemon --stacktrace
@@ -68,7 +70,7 @@ jobs:
       - name: Enviar APK e relatorio
         uses: actions/upload-artifact@v4
         with:
-          name: APK-Editor-Universal-LAB1-${{ inputs.variante }}
+          name: APK-Editor-Universal-LAB1-${{ inputs.variante || 'full' }}
           path: |
             source/app/build/outputs/apk/**/*.apk
             resultado-auditoria.txt
