@@ -1,0 +1,76 @@
+name: APK Editor Universal - LAB 1
+
+on:
+  workflow_dispatch:
+    inputs:
+      variante:
+        description: 'Edicao para testes: full (editor) ou play (explorador)'
+        required: true
+        default: full
+        type: choice
+        options:
+          - full
+          - play
+
+permissions:
+  contents: read
+
+jobs:
+  construir:
+    name: Construir APK Android universal
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      ORIGIN: https://github.com/apk-editor/APK-Explorer-Editor.git
+      REVISION: 988401012e90c5bfbcc800726bc6aa0d76e2c3c2
+    steps:
+      - name: Checkout das configuracoes
+        uses: actions/checkout@v4
+
+      - name: Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Instalar Android API 37
+        run: |
+          sdkmanager --install 'platforms;android-37' 'platform-tools' 'build-tools;37.0.0'
+
+      - name: Obter codigo-fonte aberto (GPL-3.0)
+        run: |
+          git clone --filter=blob:none "$ORIGIN" source
+          cd source
+          git checkout --detach "$REVISION"
+          test -f LICENSE
+          test -f gradlew
+          test -f app/build.gradle
+          echo "Codigo-fonte: $REVISION" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Compilar APK para testes
+        shell: bash
+        run: |
+          cd source
+          chmod +x ./gradlew
+          if [ '${{ inputs.variante }}' = 'full' ]; then
+            ./gradlew :app:assembleFullDebug --no-daemon --stacktrace
+          else
+            ./gradlew :app:assemblePlayDebug --no-daemon --stacktrace
+          fi
+
+      - name: Validar APK e gerar relatorio
+        run: |
+          python3 scripts/verificar_apk.py source/app/build/outputs/apk
+
+      - name: Enviar APK e relatorio
+        uses: actions/upload-artifact@v4
+        with:
+          name: APK-Editor-Universal-LAB1-${{ inputs.variante }}
+          path: |
+            source/app/build/outputs/apk/**/*.apk
+            resultado-auditoria.txt
+          if-no-files-found: error
+          retention-days: 7
