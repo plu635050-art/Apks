@@ -21,11 +21,26 @@ for apk in apks:
    raise SystemExit('FALHA: ABIs faltando: '+str(expected-set(abis)))
   if not all(f'lib/{abi}/libsyscheck.so' in libs for abi in expected):
    raise SystemExit('FALHA: libsyscheck.so faltando em uma arquitetura')
-  tools=[x for x in names if x.endswith(('/aapt','/aaptz','/mycp'))]
-  for tool in tools:
+  required_tools=('mycp','aapt')
+  for abi in expected:
+   for tool in required_tools:
+    p=f'assets/{abi}/{tool}'
+    if p not in names:
+     raise SystemExit(f'FALHA: ferramenta {p} ausente')
+  for tool in sorted(x for x in names if x.startswith('assets/') and (x.endswith('/aapt') or x.endswith('/aapt2') or x.endswith('/mycp') or x in ('assets/mycp','assets/aapt'))):
    blob=z.read(tool)
-   mode='ARM32' if len(blob)>20 and blob[:4]==b'\x7fELF' and blob[4]==1 and int.from_bytes(blob[18:20],'little')==40 else 'OUTRO'
-   out.append(f'  Executavel {tool}: {mode}. Uso em Android somente 64-bit exige substituto compatível.')
+   if blob[:4]==b'\\x7fELF' and len(blob)>20:
+    cls='64' if blob[4]==2 else '32'
+    arch={40:'ARM',183:'ARM64',3:'x86',62:'x86_64'}.get(int.from_bytes(blob[18:20],'little'),'desconhecida')
+    out.append(f'  {tool}: ELF{cls} {arch}')
+   else:
+    out.append(f'  {tool}: formato nao identificado')
+  for abi, expected_arch in (('armeabi-v7a',(1,40)),('arm64-v8a',(2,183)),('x86',(1,3)),('x86_64',(2,62))):
+   p=f'assets/{abi}/mycp'
+   blob=z.read(p)
+   found=(blob[4],int.from_bytes(blob[18:20],'little'))
+   if found!=expected_arch:
+    raise SystemExit(f'FALHA: mycp {abi} {found} != {expected_arch}')
   out.extend([
    f'APK: {apk.name}',
    f'Tamanho: {apk.stat().st_size}',
