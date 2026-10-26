@@ -1,0 +1,65 @@
+name: APK Editor CLASSICO - LAB 2 (32 e 64 bits)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  auditoria-e-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      ORIGIN: https://github.com/timscriptov/ApkEditor.git
+      REVISION: bddfe5807ce7f03cd59dd568b50853759501adac
+      ANDROID_NDK_VERSION: 25.2.9519653
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configurar JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Configurar Gradle 7.6.4
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '7.6.4'
+      - name: Instalar SDK 33 e NDK ARM32/ARM64
+        shell: bash
+        run: |
+          set -euxo pipefail
+          SDKMANAGER=$(find "${ANDROID_HOME}/cmdline-tools" -path '*/bin/sdkmanager' | sort -V | tail -n 1)
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" --install 'platforms;android-33' 'build-tools;33.0.2' "ndk;${ANDROID_NDK_VERSION}"
+      - name: Buscar fonte original do APK Editor (sem AEE)
+        shell: bash
+        run: |
+          git clone --filter=blob:none "$ORIGIN" original
+          cd original
+          git checkout --detach "$REVISION"
+          test -f apkEditorPro/build.gradle
+          test -f apkEditorPro/src/main/jni/Android.mk
+          echo "Fonte original: ${ORIGIN} @ ${REVISION}" >> "$GITHUB_STEP_SUMMARY"
+      - name: Compilar mycp nativo 32 e 64 bits e corrigir selecao por ABI
+        shell: bash
+        run: |
+          python3 scripts/preparar_mycp_abis.py original
+      - name: Compilar editor classico com bibliotecas de quatro ABIs
+        shell: bash
+        run: |
+          cd original
+          gradle :apkEditorPro:assembleDebug --no-daemon --stacktrace --max-workers=2
+      - name: Verificar integridade e ABIs
+        shell: bash
+        run: |
+          python3 scripts/auditar_classico.py original/apkEditorPro/build/outputs/apk/debug
+      - name: Publicar APK de diagnostico e relatorio
+        uses: actions/upload-artifact@v4
+        with:
+          name: APK-Editor-CLASSICO-LAB2-32-64
+          path: |
+            original/apkEditorPro/build/outputs/apk/debug/*.apk
+            relatorio-lab2.txt
+          if-no-files-found: error
+          retention-days: 7
