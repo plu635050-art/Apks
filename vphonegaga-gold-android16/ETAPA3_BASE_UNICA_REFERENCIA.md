@@ -10,6 +10,9 @@ A pasta privada da Biblioteca **/VPhoneGaGa Gold - Engenharia Reversa/** contém
 - `VERSAO_REFERENCIA.json` — identificador do original e inventário resumido.
 - `MAPA_METODOS_CRITICOS.txt` —  referência a métodos que importam para a auditoria.
 - `RESUMO_DEX.json` e `MANIFESTO_COMPONENTES.txt` — consulta direta.
+- `REA_ANALISE_ORIGINAL_DEX.json` — resultado real REA da cópia sem ROMs, com DEX/manifesto idênticos ao original.
+- `PLANO_DIRETO_SEM_RETRABALHO.md` — situação e pendências.
+- `INDICE_JAVA_DECOMPILADO.txt` — índice dos arquivos Java no ZIP.
   
 **Não subir esse ZIP num GitHub público:** inclui código e bibliotecas proprietários.
 
@@ -27,7 +30,7 @@ A pasta privada da Biblioteca **/VPhoneGaGa Gold - Engenharia Reversa/** contém
 
 1. Sempre abrir primeiro `LEIA-ME_BASE_UNICA.md` e `RESUMO_DEX.json`.
 2. Pesquisar `MAPA_METODOS_CRITICOS.txt` para localizar classe/DEX antes de usar o JADX.
-3. Descompilar os quatro DEX **uma única vez**, quando houver JADX/REA com acesso aos bytes da Biblioteca em um ambiente privado; salvar a exportação Java + relatório e não repetir a descompilação.
+3. **Os quatro DEX já foram decompilados uma vez** pelo JADX 1.5.6 com memória controlada por DEX; há 13.286 arquivos Java exportados no ZIP (22 erros relatados). Consultá-los sem repetir a descompilação. Quando houver erro, conferir o bytecode original.
 4. Jamais refazer modificações no DEX4 dos LABs antigos; começar da base original verificada.
 5. Não assinar antes de reinserir ROMs. O ZIP atual é **material de estudo**, **não um APK**.
 
@@ -41,6 +44,6 @@ A pasta privada da Biblioteca **/VPhoneGaGa Gold - Engenharia Reversa/** contém
 
 ### Limites e status REA
 
-REA foi executado pelo GitHub Actions no projeto autoral PrimeApps VM, **não** sobre o arquivo original do VPhoneGaGa Gold: não há acesso automático do runner ao ZIP privado da Biblioteca. O ZIP de estudo contém arquivos extraídos e índices DEX, não uma conversão Java completa. **Não alegar o contrário.**
+**REA 6.8.0 com motor JADX headless 0.7.1 foi executado neste ambiente de análise sobre a cópia LAB 3 do VPhoneGaGa Gold** (sem ROMs e sem assinatura). Os 4 DEX e o AndroidManifest.xml dessa cópia foram verificados byte a byte iguais aos do original. Resultado REA: pacote `com.vphonegaga.titan`, 3.4.0 Olivia, 12.504 classes (métrica de REA distinta das 23.513 definições brutas indexadas); a análise foi estática, não testou boot ou assinatura. **JADX CLI 1.5.6 exportou 13.286 `.java` em quatro grupos**, com 22 erros de decompilação. O ZIP final e o plano técnico estão preservados na Biblioteca privada; os binários não estão publicados no GitHub.
 
 Arquivo de auditoria da etapa 2: `vphonegaga-gold-android16/ETAPA2_ASSINATURA_ROM.md`.
