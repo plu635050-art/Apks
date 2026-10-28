@@ -1,0 +1,51 @@
+name: PrimeApps VM - ARM64 mount-move regression
+
+on:
+  push:
+    branches:
+      - feature/primeapps-vm-real-rom-reader-20261028
+    paths:
+      - '.github/workflows/primeapps-vm-stage18-mount-move.yml'
+      - 'primeapps-vm/rom-engine/arm64_mount_move_probe.c'
+      - 'primeapps-vm/rom-engine/test_arm64_guest_mounts.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-aarch64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install open-source ARM64 QEMU and boot-test tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq clang lld cpio qemu-system-arm e2fsprogs
+          command -v qemu-system-aarch64
+          command -v clang
+      - name: Download public AOSP ARM64 emulator kernel
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --max-time 120 -o kernel.b64 'https://android.googlesource.com/platform/prebuilts/qemu-kernel.git/+/refs/heads/android10-c2f2-s1-release/arm64/3.18/kernel-qemu2?format=TEXT'
+          base64 -d kernel.b64 > aosp-kernel-arm64-3.18.Image
+          file aosp-kernel-arm64-3.18.Image
+          sha256sum aosp-kernel-arm64-3.18.Image | tee stage18-kernel.sha256
+          test "$(stat -c%s aosp-kernel-arm64-3.18.Image)" -gt 7000000
+      - name: Prove actual guest kernel EXT4 and mount move operations
+        run: |
+          set -euo pipefail
+          python3 primeapps-vm/rom-engine/test_arm64_guest_mounts.py \
+            aosp-kernel-arm64-3.18.Image --serial-log stage18-qemu-serial.log
+          grep -a 'PRIMEVM18' stage18-qemu-serial.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: PrimeApps-Stage18-QEMU-ARM64-mount-move-evidence
+          path: |
+            stage18-qemu-serial.log
+            stage18-kernel.sha256
+          if-no-files-found: warn
+          retention-days: 7
