@@ -29,3 +29,17 @@
 - Validação real no Poco Android16; ainda não realizada.
 
 O script aberto `compat_syscall_shim.py` só altera **cópias de executáveis ARM64 fornecidos como entrada** e valida o padrão antes de escrever. `test_compat_syscall_shim.py` comprova não modificar o original e rejeitar entradas inseguras.
+
+## Prova adicional — Android 7 monta SYSTEM e processa serviços de interface
+
+Uma segunda configuração de laboratório restaurou o serviço `ueventd` que estava comentado em `init.rc` na ROM extraída, e mapeou o RC-modelo `init.${ro.hardware}.rc` para `init.titan.rc`. A operação foi limitada à cópia temporária da partição `root`.
+
+Registro no QEMU com kernel AOSP 3.18:
+
+- `ueventd: ueventd started!`
+- `ueventd: Coldboot took 0.18s.`
+- `EXT4-fs (vda): mounted filesystem`
+- O `init` examinou scripts `/system/etc/init/*.rc` e reconheceu serviços `zygote`, `surfaceflinger`, `servicemanager`, `su_daemon` e muitos outros.
+- A maioria dos serviços falhou antes de iniciar por falta de domínios e rótulos SELinux, porque o conversor EXT4 ainda não reconstruiu o xattr `security.selinux`.
+
+**Não foram validados Android gráfico, root guest, binder funcional, quatro VMs ou Poco Android16.**
