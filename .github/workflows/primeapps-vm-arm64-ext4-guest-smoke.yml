@@ -25,19 +25,19 @@ jobs:
           command -v qemu-system-aarch64
           command -v mke2fs
           command -v e2fsck
-      - name: Download Alpine ARM64 kernel and initramfs
+      - name: Download Alpine ARM64 Linux LTS kernel and broader initramfs with ext4 support
         run: |
           set -euo pipefail
           BASE=https://dl-cdn.alpinelinux.org/alpine/v3.23/releases/aarch64/netboot
-          curl -fL --retry 3 --max-time 150 -o vmlinuz-virt "$BASE/vmlinuz-virt"
-          curl -fL --retry 3 --max-time 150 -o initramfs-virt "$BASE/initramfs-virt"
-          sha256sum vmlinuz-virt initramfs-virt | tee boot-assets.sha256
+          curl -fL --retry 3 --max-time 150 -o vmlinuz-lts "$BASE/vmlinuz-lts"
+          curl -fL --retry 3 --max-time 150 -o initramfs-lts "$BASE/initramfs-lts"
+          sha256sum vmlinuz-lts initramfs-lts | tee boot-assets.sha256
       - name: Validate the actual guest can mount and read the EXT4 disk
         run: |
           set -euo pipefail
           cd primeapps-vm/rom-engine
           python3 qemu_arm64_guest_ext4_probe.py \
-            ../../vmlinuz-virt ../../initramfs-virt \
+            ../../vmlinuz-lts ../../initramfs-lts \
             --serial-log ../../primevm-arm64-ext4-serial.log
       - uses: actions/upload-artifact@v4
         if: always()
