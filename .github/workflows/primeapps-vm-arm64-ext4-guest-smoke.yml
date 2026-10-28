@@ -1,0 +1,50 @@
+name: PrimeApps VM - ARM64 guest mounts converted EXT4
+
+on:
+  push:
+    branches: [feature/primeapps-vm-real-rom-reader-20261028]
+    paths:
+      - 'primeapps-vm/rom-engine/qemu_arm64_guest_ext4_probe.py'
+      - '.github/workflows/primeapps-vm-arm64-ext4-guest-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  guest-mount-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install QEMU ARM64 and ext4 builder
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-arm e2fsprogs
+          command -v qemu-system-aarch64
+          command -v mke2fs
+          command -v e2fsck
+      - name: Download Alpine ARM64 kernel and initramfs
+        run: |
+          set -euo pipefail
+          BASE=https://dl-cdn.alpinelinux.org/alpine/v3.23/releases/aarch64/netboot
+          curl -fL --retry 3 --max-time 150 -o vmlinuz-virt "$BASE/vmlinuz-virt"
+          curl -fL --retry 3 --max-time 150 -o initramfs-virt "$BASE/initramfs-virt"
+          sha256sum vmlinuz-virt initramfs-virt | tee boot-assets.sha256
+      - name: Validate the actual guest can mount and read the EXT4 disk
+        run: |
+          set -euo pipefail
+          cd primeapps-vm/rom-engine
+          python3 qemu_arm64_guest_ext4_probe.py \
+            ../../../vmlinuz-virt ../../../initramfs-virt \
+            --serial-log ../../../primevm-arm64-ext4-serial.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: PrimeApps-ARM64-QEMU-mounted-EXT4-evidence
+          path: |
+            primevm-arm64-ext4-serial.log
+            boot-assets.sha256
+          if-no-files-found: warn
+          retention-days: 7
