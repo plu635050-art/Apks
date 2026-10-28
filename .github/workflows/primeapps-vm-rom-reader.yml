@@ -26,7 +26,7 @@ jobs:
           command -v debugfs
           command -v qemu-img
           command -v qemu-io
-      - name: Validate ROM reader and build/read ext4 guest image
+      - name: Validate ROM reader, ext4 storage and syscall ABI adapter (synthetic test)
         run: |
           set -euo pipefail
           python -m compileall -q primeapps-vm/rom-engine
