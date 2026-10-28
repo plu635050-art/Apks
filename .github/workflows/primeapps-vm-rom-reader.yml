@@ -1,0 +1,26 @@
+name: PrimeApps VM - Real ROM filesystem tests
+on:
+  push:
+    branches:
+      - feature/primeapps-vm-real-rom-reader-20261028
+    paths:
+      - 'primeapps-vm/rom-engine/**'
+      - '.github/workflows/primeapps-vm-rom-reader.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rom-reader:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Validate source syntax and reconstruct synthetic ROM
+        run: |
+          set -euo pipefail
+          python -m compileall -q primeapps-vm/rom-engine
+          cd primeapps-vm/rom-engine
+          python -m unittest discover -s . -p 'test_*.py' -v
