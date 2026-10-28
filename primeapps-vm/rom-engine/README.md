@@ -42,3 +42,11 @@ References:
 - https://github.com/rhn-1k/QubeVM
 - https://github.com/Droid-VM/DroidVM
 - https://developer.android.com/guide/practices/page-sizes
+
+## Stage 14 — Real EXT4 guest images
+
+`build_ext4_from_atit.py` builds a real ext4 filesystem image directly from the `readonly.bin` ATIT partition, restoring original UID/GID and file/directory modes, using e2fsprogs (`mke2fs`, `debugfs`, `e2fsck`) without requiring root. The Actions job tests real readback from an EXT4 synthetic image and checks UID/GID 1000/1001. All four tests passed in run `40738325988`.
+
+    python3 build_ext4_from_atit.py system_readonly.bin system.ext4 --label system
+
+**This produces a filesystem image, NOT an Android VM or a bootable guest.** The original guest fstab references `/dev/block/mtdblock0` etc., which must be mapped or adapted for QEMU `virt` and a compatible ARM64 guest kernel. Guest SELinux labels, writable overlays and runtime integration remain to be implemented. See [ETAPA14_BOOT_PREPARATION.md](ETAPA14_BOOT_PREPARATION.md).
