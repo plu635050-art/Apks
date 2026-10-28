@@ -1,0 +1,52 @@
+name: VPhoneGaGa Gold - ferramentas REA + JADX offline
+on:
+  push:
+    branches:
+      - audit/vphonegaga-gold-android16-20261028
+    paths:
+      - .github/workflows/vphonegaga-offline-decompiler-tools.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preparar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.22.1"
+      - name: Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Instalar REA e engine de analise
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p portable/node portable/rea portable/engine portable/jadx
+          npm install --prefix "$PWD/portable/rea" --no-audit --no-fund rea-agents@6.8.0
+          cp "$(command -v node)" portable/node/node
+          curl -fL --retry 3 -o portable/engine/jadx-headless-mcp-0.7.1-all.jar \
+            'https://github.com/1013503897/jadx-headless-mcp/releases/download/v0.7.1/jadx-headless-mcp-0.7.1-all.jar'
+          echo "6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75  portable/engine/jadx-headless-mcp-0.7.1-all.jar" | sha256sum -c -
+          curl -fL --retry 3 -o "$RUNNER_TEMP/jadx.zip" \
+            'https://github.com/skylot/jadx/releases/download/v1.5.6/jadx-1.5.6.zip'
+          sha256sum "$RUNNER_TEMP/jadx.zip"
+          unzip -q "$RUNNER_TEMP/jadx.zip" -d portable/jadx
+          test -f portable/jadx/bin/jadx
+          portable/node/node portable/rea/node_modules/rea-agents/scripts/rea.mjs --version
+          portable/jadx/bin/jadx --version
+          tar -czf vphonegaga_rea_jadx_offline.tar.gz -C portable .
+      - name: Publicar ferramentas privadas de analise
+        uses: actions/upload-artifact@v4
+        with:
+          name: VPhoneGaGa-REA-JADX-offline-tools
+          path: vphonegaga_rea_jadx_offline.tar.gz
+          if-no-files-found: error
+          retention-days: 7
