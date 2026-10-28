@@ -1,0 +1,50 @@
+name: PrimeApps VM - obtain public AOSP emulator ARM64 kernels
+on:
+  push:
+    branches: [feature/primeapps-vm-real-rom-reader-20261028]
+    paths: [".github/workflows/primeapps-vm-android-kernel-research.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  retrieve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Download and identify publicly distributed AOSP kernel (not user ROMs)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p aosp-kernel
+          ROOT=https://android.googlesource.com/platform/prebuilts/qemu-kernel.git
+          REFS='refs/heads/android10-c2f2-s1-release refs/heads/android10-mainline-release refs/tags/android-10.0.0_r47'
+          got=0
+          for ref in $REFS; do
+            for kernel in arm64/4.4/kernel-qemu2 arm64/3.18/kernel-qemu2 arm64/4.14/kernel-qemu2; do
+              safe="$(echo "$ref-$kernel" | tr '/.' '--')"
+              if curl -fsSL --retry 1 --max-time 40 "$ROOT/+/$ref/$kernel?format=TEXT" -o "aosp-kernel/$safe.txt"; then
+                if base64 -d "aosp-kernel/$safe.txt" > "aosp-kernel/$safe.Image" 2>/dev/null; then
+                  sz=$(stat -c%s "aosp-kernel/$safe.Image")
+                  echo "$ref $kernel $sz bytes"
+                  if [ "$sz" -gt 1000000 ]; then
+                    file "aosp-kernel/$safe.Image"
+                    sha256sum "aosp-kernel/$safe.Image"
+                    got=$((got+1))
+                  else
+                    rm -f "aosp-kernel/$safe.Image"
+                  fi
+                fi
+              fi
+              rm -f "aosp-kernel/$safe.txt"
+              [ "$got" -ge 2 ] && break 2
+            done
+          done
+          [ "$got" -gt 0 ] || { echo "No verifiable AOSP arm64 kernel found"; exit 1; }
+          echo "$got images"
+      - name: Publish only open-source AOSP kernel test images
+        uses: actions/upload-artifact@v4
+        with:
+          name: PrimeApps-AOSP-ARM64-emulator-kernels
+          path: aosp-kernel/*.Image
+          if-no-files-found: error
+          retention-days: 7
