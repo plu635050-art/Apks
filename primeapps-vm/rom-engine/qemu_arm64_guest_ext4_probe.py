@@ -61,7 +61,7 @@ def smoke(kernel: Path, initrd: Path, serial_output: Path, *, timeout_seconds: i
                     # Give the initramfs recovery shell time to start reading input.
                     time.sleep(2)
                     proc.stdin.write(b'\nmodprobe virtio_blk 2>/dev/null\n')
-                    proc.stdin.write(b'mdev -s\nmkdir -p /mnt/primevm\n')
+                    proc.stdin.write(b'modprobe ext4\nmdev -s\nmkdir -p /mnt/primevm\n')
                     proc.stdin.write(b'mount -t ext4 -o ro /dev/vda /mnt/primevm && echo PRIMEVM_EXT4_MOUNT_OK\n')
                     proc.stdin.write(b'cat /mnt/primevm/hello.txt\n')
                     proc.stdin.write(b'ls -ln /mnt/primevm/hello.txt\n')
