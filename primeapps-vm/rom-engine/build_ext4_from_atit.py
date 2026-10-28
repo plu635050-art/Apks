@@ -9,6 +9,7 @@ import hashlib
 import json
 import math
 import os
+import stat
 from pathlib import Path
 import shutil
 import subprocess
@@ -69,6 +70,11 @@ def make_image(readonly, output, label='system', size_mib=None):
             stage = Path(scratch)/'tree'
             reader.extract(stage)  # validates each guest file CRC32 and links
             (stage/'_ATIT_INDEX.json').unlink()  # index is NOT part of the guest filesystem
+            # Restore original mode bits on directories, deepest first. The ATIT
+            # extractor already sets modes for regular files.
+            for item, record in sorted(records, key=lambda e:e[0]['path'].count('/'), reverse=True):
+                if item['type']=='directory':
+                    os.chmod(stage/item['path'], stat.S_IMODE(record['mode']))
             # The extracted filenames are from a validated inode graph. No host sudo/mount.
             with output.open('wb') as f:
                 f.truncate(size_mib * MIB)
