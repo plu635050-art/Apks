@@ -1,0 +1,49 @@
+name: PrimeApps VM - offline QEMU tools for private guest tests
+on:
+  push:
+    branches: [feature/primeapps-vm-real-rom-reader-20261028]
+    paths: [".github/workflows/primeapps-vm-offline-qemu-tools.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  export-tools:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Install Debian/Ubuntu open-source emulation utilities
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-arm qemu-utils e2fsprogs
+          qemu-system-aarch64 --version
+      - name: Create self-contained portable x86_64 Linux testing bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p vm-tools/bin vm-tools/lib
+          for bin in qemu-system-aarch64 qemu-img qemu-io mke2fs debugfs e2fsck; do
+            cp "$(command -v "$bin")" "vm-tools/bin/$bin"
+            ldd "$(command -v "$bin")" | awk '/=> \// {print $3} /^\s*\// {print $1}' >> library-list.txt
+          done
+          cp -L /lib64/ld-linux-x86-64.so.2 vm-tools/lib/
+          sort -u library-list.txt | while read -r p; do
+            [ -f "$p" ] || continue
+            cp -L "$p" "vm-tools/lib/$(basename "$p")"
+          done
+          cat > vm-tools/qemu-arm64.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -e
+          ROOT="$(cd "$(dirname "$0")" && pwd)"
+          exec "$ROOT/lib/ld-linux-x86-64.so.2" --library-path "$ROOT/lib" "$ROOT/bin/qemu-system-aarch64" "$@"
+          EOF
+          chmod +x vm-tools/qemu-arm64.sh
+          vm-tools/qemu-arm64.sh --version
+          tar -czf primevm-qemu-tools-linux-x86_64.tar.gz vm-tools
+          sha256sum primevm-qemu-tools-linux-x86_64.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PrimeApps-QEMU-tools-for-private-ROM-tests
+          path: primevm-qemu-tools-linux-x86_64.tar.gz
+          retention-days: 7
+          if-no-files-found: error
