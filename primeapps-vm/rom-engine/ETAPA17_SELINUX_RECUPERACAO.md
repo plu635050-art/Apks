@@ -38,3 +38,7 @@ Os atributos foram lidos diretamente dos discos depois da gravação:
 ## Próximo marco de aceitação
 
 Repetir o boot com as imagens SELinux reconstruídas e resolver `switch-root`, `/dev` e `/data`, registrando a subida real de `servicemanager`, `zygote` e `surfaceflinger`. **Não criar APK final até Android 7/10 alcançarem interface gráfica e execução simultânea comprovada no aparelho.**
+
+## Reteste QEMU das imagens SELinux (2026-10-28)
+
+Foi executado o kernel AOSP ARM64 3.18 no QEMU TCG com as partições **reais** `system` e `vendor` rotuladas. O processo `init.real` continua encerrando em `Unable to move mount at '/dev': No such file or directory`, mesmo depois de criar os diretórios de montagem na imagem temporária. Isso confirma que recuperar rótulos SELinux é necessário, mas **insuficiente**: precisamos resolver a topologia/semântica de montagens do primeiro estágio antes do segundo estágio e da GUI. Logs privados retidos na Biblioteca; ROMs não publicadas.
