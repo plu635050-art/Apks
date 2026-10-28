@@ -36,3 +36,7 @@ O `init` original, por sua vez, ainda falha em `Unable to move mount at '/dev': 
 ## Próxima prioridade técnica
 
 Instrumentar o ambiente de primeiro estágio para registrar `/proc/self/mountinfo`, o `new_root`, o destino do movimento e os retornos errno no instante da falha do `init` real. Se necessário, substituir a preparação de `/dev`, `/proc` e `/sys` por um bootstrap compatível antes de entrar no segundo estágio. Não declarar boot Android completo até observar execução de `servicemanager`, `zygote`, `surfaceflinger`, interface gráfica e conectividade ADB reais. Validação no Poco X7 Pro permanece dependente de teste físico.
+
+## Reteste do init Android 10 com MS_NODEV corrigido
+
+O bootstrap de laboratório foi refeito com `/dev` sem `MS_NODEV` e o boot foi repetido com as imagens reais Android10 `system` e `vendor`. O `init.real` ainda registra `Unable to move mount at '/dev': No such file or directory`; portanto a alteração é válida para o probe isolado, **mas não corrige o init original**. Log restrito à Biblioteca. O script de regressão sintético ARM64 + ext4 foi aprovado em GitHub Actions **#40749665984**. Continuam pendentes switch_root real, Android GUI, root guest, 4 VMs e prova no Poco Android16.
