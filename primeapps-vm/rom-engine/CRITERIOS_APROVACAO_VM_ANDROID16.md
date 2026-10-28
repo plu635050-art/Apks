@@ -23,8 +23,8 @@ Data: 28/10/2026. Este documento é a referência permanente do projeto. **Não 
 | V01 | Ler as duas ROMs (`ATIT`/`readonly.bin`) e CRC dos arquivos | **PASSOU** com arquivos reais | 
 | V02 | Recuperar partições `root/system/vendor` e arquivos executáveis ARM64 | **PASSOU** com arquivos reais |
 | V03 | Gerar EXT4 com UID/GID/modes e reler arquivos | **PASSOU** em imagem sintética no Actions; ROM real ainda não montada no QEMU |
-| V04 | Criar 4 overlays QCOW2 independentes e 4 partições userdata EXT4 | **Em validação CI desta etapa** |
-| V05 | Provar leitura/escrita sem contaminação entre quatro instâncias | **Em validação CI desta etapa** (não implica VM em execução) |
+| V04 | Criar 4 overlays QCOW2 independentes e 4 partições userdata EXT4 | **PASSOU em QEMU no GitHub Actions #40739483992** |
+| V05 | Provar leitura/escrita sem contaminação entre quatro instâncias | **PASSOU em QEMU no GitHub Actions #40739483992** (não implica VM em execução) |
 | V06 | Obter kernel ARM64 de distribuição permitida com drivers virtio e adaptar init/fstab | PENDENTE |
 | V07 | Boot de Android 10 recuperado, shell funcional | PENDENTE |
 | V08 | Boot de Android 7 recuperado, shell funcional | PENDENTE |
@@ -67,3 +67,11 @@ Data: 28/10/2026. Este documento é a referência permanente do projeto. **Não 
 - QEMU ARM64 virt: https://www.qemu.org/docs/master/system/arm/virt
 - ADB: https://developer.android.com/tools/adb
 - Android SAF: https://developer.android.com/training/data-storage/shared/documents-files
+
+## Resultado CI executado, etapa 15
+
+- Branch: `feature/primeapps-vm-real-rom-reader-20261028` no repositório `plu635050-art/Apks`.
+- **Run #40739483992:** 8 testes aprovados.
+- `test_four_independent_disks_and_immutable_base`: QEMU `qemu-img` criou quatro overlays QCOW2; `qemu-io` escreveu em um e leu o outro sem contaminação; SHA-256 da base permaneceu igual; discos userdata EXT4 distintos testados pelo `debugfs`.
+- `test_four_separate_guest_serials_and_transfer`: testes com ADB simulado comprovaram a seleção da instância, `push`, `pull`, `install` e exportação de APK normal/split no nível de lógica. **Nenhuma transferência em guest real foi testada**.
+- O CI deste momento executou em Ubuntu x86_64, **não** no Poco Android 16; boot de sistema convidado continua pendente.
