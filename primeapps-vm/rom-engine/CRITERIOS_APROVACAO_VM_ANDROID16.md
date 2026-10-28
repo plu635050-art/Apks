@@ -77,3 +77,15 @@ Data: 28/10/2026. Este documento é a referência permanente do projeto. **Não 
 - O CI deste momento executou em Ubuntu x86_64, **não** no Poco Android 16; boot de sistema convidado continua pendente.
 
 - `test_two_android7_and_two_android10_storage_groups`: foram criadas duas instâncias com base Android 7 e duas com base Android 10 (imagens EXT4 sintéticas distintas), com quatro portas ADB propostas únicas. **Isso valida apenas o armazenamento, não o boot.**
+## Etapa 16 — prova ARM64 real e dependência de ABI da ROM (28/10/2026)
+
+- Linux ARM64 real iniciou no QEMU por TCG, inclusive `/init` (run Actions `40740606197`). **Não é boot Android**.
+- Cinco partições **reais** das ROMs originais Android7/10 foram reconstruídas em EXT4 privado com `e2fsck` íntegro e hashes de amostra conferidos.
+- Dois kernels prebuilt AOSP ARM64 (3.18 e 4.4) foram baixados com SHA256 e usados no QEMU privado.
+- Os `/init` das duas ROMs originalmente falharam com SIGSEGV em **0xB0000018**; encontramos uma chamada de função fixa para a infraestrutura do motor Gold `mov x8,#0xb0000000; ldr x8,[x8,#0x18]; br x8`.
+- Um adaptador de laboratório, em cópias locais dos executáveis, desviou essas chamadas para o Linux syscall ABI (`svc #0`): **92 pontos Android10**, **98 Android7**; `healthd` Android7 possui outros **63 pontos**.
+- **Android10:** `init` original adaptado executou primeiro estágio, montou a partição real EXT4 de `system` e chegou a `Switching root to '/system'`, onde parou na mudança de montagem `/dev`.
+- **Android7:** `init` original adaptado completou o primeiro e segundo estágio, processou SELinux e arquivos RC, tentou `healthd`; a montagem de partições e demais serviços ainda falha.
+- **Não aprovados:** boot gráfico do Android7/10, root nos guests, 4 VMs concorrentes, bridge ADB real, teste em Poco Android 16, benchmark.
+- Scripts e logs no relatório `ETAPA16_BOOT_RELATORIO.md`, sem ROMs proprietárias.
+- CI `40745449261` executou o teste sintético do patch de ABI, além dos testes de imagens e QCOW2.
