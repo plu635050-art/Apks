@@ -1,0 +1,70 @@
+name: PrimeApps VM - QEMU ARM64 real Linux boot proof
+
+on:
+  push:
+    branches: [feature/primeapps-vm-real-rom-reader-20261028]
+    paths:
+      - '.github/workflows/primeapps-vm-arm64-linux-boot-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  arm64-linux-boot-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Install real ARM64 QEMU emulator
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-arm
+          command -v qemu-system-aarch64
+          qemu-system-aarch64 --version
+      - name: Download published Alpine ARM64 Linux kernel and initramfs
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://dl-cdn.alpinelinux.org/alpine/v3.23/releases/aarch64/netboot
+          curl --fail --location --retry 3 --max-time 150 -o vmlinuz-virt "$BASE/vmlinuz-virt"
+          curl --fail --location --retry 3 --max-time 150 -o initramfs-virt "$BASE/initramfs-virt"
+          test "$(stat -c%s vmlinuz-virt)" -gt 5000000
+          test "$(stat -c%s initramfs-virt)" -gt 2000000
+          sha256sum vmlinuz-virt initramfs-virt | tee downloaded-boot-assets.sha256
+          file vmlinuz-virt initramfs-virt
+      - name: Boot a real ARM64 Linux guest in QEMU (TCG)
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          timeout -s TERM -k 8s 150s qemu-system-aarch64 \
+            -machine virt -cpu cortex-a72 -smp 2 -m 1024 \
+            -accel tcg,thread=multi \
+            -nographic -monitor none -serial stdio -no-reboot \
+            -kernel vmlinuz-virt -initrd initramfs-virt \
+            -append "console=ttyAMA0 loglevel=7 modules=virtio,virtio_pci,virtio_blk" \
+            > arm64-serial.log 2>&1
+          EXIT=$?
+          set -e
+          echo "QEMU exit code: $EXIT (timeout=124 is expected for running guest)"
+          tail -n 110 arm64-serial.log
+          if ! grep -Eq 'Linux version [0-9]|Booting Linux on physical CPU' arm64-serial.log; then
+            echo "::error::QEMU did not prove execution of an ARM64 Linux kernel"
+            exit 1
+          fi
+          if ! grep -Eiq 'Run /init as init process|Alpine Init|Alpine Linux|Welcome to Alpine|login:' arm64-serial.log; then
+            echo "::error::Kernel started but guest userspace/init not demonstrated"
+            exit 1
+          fi
+          echo "PASS: ARM64 kernel AND init/userspace executed on QEMU TCG runner"
+      - name: Upload serial log and kernel fingerprints
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PrimeApps-QEMU-ARM64-Linux-boot-evidence
+          path: |
+            arm64-serial.log
+            downloaded-boot-assets.sha256
+          if-no-files-found: warn
+          retention-days: 7
