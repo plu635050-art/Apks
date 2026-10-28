@@ -1,0 +1,87 @@
+name: PrimeApps VM - LAB 2 multi-instancia + REA
+on:
+  push:
+    branches:
+      - feature/primeapps-vm-multiinstance-lab2-20261028
+    paths:
+      - "primeapps-vm/**"
+      - ".github/workflows/primeapps-vm-lab2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lab2:
+    name: APK unsigned e evidencias REA
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: SDK API 36 (localizar ou instalar cmdline-tools)
+        shell: bash
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          mkdir -p "$SDK_ROOT/cmdline-tools"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)"
+          if [ -z "$SDKMANAGER" ]; then
+            curl --fail --location --retry 3 -o "$RUNNER_TEMP/cmdline.zip" \
+              "https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip"
+            echo "4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583  $RUNNER_TEMP/cmdline.zip" | sha256sum -c -
+            mkdir -p "$RUNNER_TEMP/cmdline"
+            unzip -q "$RUNNER_TEMP/cmdline.zip" -d "$RUNNER_TEMP/cmdline"
+            mv "$RUNNER_TEMP/cmdline/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
+            SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          fi
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "sdkmanager localizado: $SDKMANAGER"
+          yes | "$SDKMANAGER" --sdk_root="$SDK_ROOT" --licenses >/dev/null || true
+          "$SDKMANAGER" --sdk_root="$SDK_ROOT" "platforms;android-36" "build-tools;35.0.0"
+      - name: Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+      - name: Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.22.1"
+      - name: REA oficial 6.8.0
+        run: |
+          npm install --global rea-agents@6.8.0
+          rea --version
+      - name: Baixar engine JADX assinada por hash
+        run: |
+          mkdir -p "$RUNNER_TEMP/rea-tools"
+          curl --fail --location --retry 3 \
+            -o "$RUNNER_TEMP/rea-tools/jadx-headless-mcp-0.7.1-all.jar" \
+            "https://github.com/1013503897/jadx-headless-mcp/releases/download/v0.7.1/jadx-headless-mcp-0.7.1-all.jar"
+          printf '%s  %s\n' \
+            '6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75' \
+            "$RUNNER_TEMP/rea-tools/jadx-headless-mcp-0.7.1-all.jar" | sha256sum -c -
+          echo "REA_JADX_MCP_JAR=$RUNNER_TEMP/rea-tools/jadx-headless-mcp-0.7.1-all.jar" >> "$GITHUB_ENV"
+      - name: Compilar LAB 2 unsigned
+        run: gradle --no-daemon --console=plain -p primeapps-vm :app:assembleRelease
+      - name: Evidencias de engenharia reversa no proprio LAB
+        run: |
+          mkdir -p reports
+          rea inspect-android-package \
+            "primeapps-vm/app/build/outputs/apk/release/app-release-unsigned.apk" \
+            --json > reports/rea-lab2.json
+          python3 -m json.tool reports/rea-lab2.json > /dev/null
+          echo "REA produziu JSON valido"
+      - name: Disponibilizar APK e relatorio
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PrimeApps-VM-LAB2-multiinstance-unsigned-REA
+          path: |
+            primeapps-vm/app/build/outputs/apk/release/*.apk
+            reports/rea-lab2.json
+          if-no-files-found: warn
+          retention-days: 14
