@@ -28,8 +28,10 @@ jobs:
           ROOT="$SDK_ROOT/build-tools/35.0.0"
           test -x "$ROOT/apksigner"
           test -f "$ROOT/lib/apksigner.jar"
+          test -x "$ROOT/zipalign"
           mkdir -p signer/lib
           cp "$ROOT/apksigner" signer/
+          cp "$ROOT/zipalign" signer/
           cp "$ROOT/lib/apksigner.jar" signer/lib/
           tar -czf apksigner-offline-35.0.0.tgz signer
           sha256sum apksigner-offline-35.0.0.tgz
