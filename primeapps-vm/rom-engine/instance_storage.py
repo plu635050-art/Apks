@@ -38,9 +38,11 @@ def check_ext4(path):
             raise ValueError('Expected ext4 superblock magic, not a guest ext4 image')
 
 
-def plan_group(base, workspace, count=4, data_mib=256, prefix='android10'):
-    if not 4 <= count <= 16:
-        raise ValueError('Group must contain between 4 and 16 instances for this validation')
+def plan_group(base, workspace, count=4, data_mib=256, prefix='android10', port_base=6300):
+    if not 1 <= count <= 16:
+        raise ValueError('Group must contain between 1 and 16 instances; the overall 4-VM target is validated separately')
+    if not 1024 <= port_base + 1 <= port_base + count <= 65535:
+        raise ValueError('Guest ADB port range invalid')
     if not 64 <= data_mib <= 8192:
         raise ValueError('data_mib out of bounds: 64..8192 MiB')
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,24}', prefix):
@@ -82,7 +84,7 @@ def plan_group(base, workspace, count=4, data_mib=256, prefix='android10'):
             instances.append({
                 'id':name,'system_overlay':str(overlay.relative_to(workspace)),
                 'userdata':str(userdata.relative_to(workspace)),
-                'adb_port_proposed':6300+number,
+                'adb_port_proposed':port_base+number,
                 'status':'DISKS_CREATED_NOT_BOOTED',
                 'guest_root_verified':False,'guest_boot_verified':False,
                 'guest_adb_verified':False,
@@ -107,8 +109,9 @@ if __name__=='__main__':
     p.add_argument('--count',type=int,default=4)
     p.add_argument('--data-mib',type=int,default=256)
     p.add_argument('--name',default='android10')
+    p.add_argument('--adb-port-base',type=int,default=6300)
     a=p.parse_args()
-    result=plan_group(a.ext4_base,a.workspace,a.count,a.data_mib,a.name)
+    result=plan_group(a.ext4_base,a.workspace,a.count,a.data_mib,a.name,a.adb_port_base)
     print(json.dumps({'instance_count':result['instance_count'],
                       'status':'DISKS_CREATED_NOT_BOOTED',
                       'manifest':str(a.workspace/'instances.json')},indent=2))
