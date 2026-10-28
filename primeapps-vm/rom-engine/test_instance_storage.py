@@ -45,6 +45,26 @@ class InstanceDiskTests(unittest.TestCase):
             self.assertIn('File not found',info2)
             self.assertEqual(4,len(json.loads((workspace/'instances.json').read_text())['instances']))
 
+
+    def test_two_android7_and_two_android10_storage_groups(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)
+            bases=[]
+            for guest in ('android7','android10'):
+                b=root/(guest+'.ext4')
+                with b.open('wb') as f:f.truncate(32*1024*1024)
+                invoke('mke2fs','-q','-F','-t','ext4',b)
+                bases.append(b)
+            g7=plan_group(bases[0],root/'group7',count=2,data_mib=64,prefix='android7',port_base=6300)
+            g10=plan_group(bases[1],root/'group10',count=2,data_mib=64,prefix='android10',port_base=6400)
+            ports=[x['adb_port_proposed'] for x in g7['instances']+g10['instances']]
+            self.assertEqual(4,len(ports))
+            self.assertEqual(4,len(set(ports)))
+            self.assertEqual({'android7-01','android7-02','android10-01','android10-02'},
+                             {x['id'] for x in g7['instances']+g10['instances']})
+            self.assertFalse(g7['guest_boot_verified'])
+            self.assertFalse(g10['guest_boot_verified'])
+
     def test_refuse_invalid_original_and_existing_workspace(self):
         with tempfile.TemporaryDirectory() as td:
             root=Path(td)
