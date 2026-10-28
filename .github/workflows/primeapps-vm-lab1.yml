@@ -1,0 +1,72 @@
+name: PrimeApps VM - LAB 1 build + REA
+on:
+  push:
+    branches:
+      - feature/primeapps-vm-lab1-20261028
+    paths:
+      - "primeapps-vm/**"
+      - ".github/workflows/primeapps-vm-lab1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lab1:
+    name: APK unsigned e evidencias REA
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+      - name: SDK API 36
+        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
+      - name: Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+      - name: Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.22.1"
+      - name: REA oficial 6.8.0
+        run: |
+          npm install --global rea-agents@6.8.0
+          rea --version
+      - name: Baixar engine JADX assinada por hash
+        run: |
+          mkdir -p "$RUNNER_TEMP/rea-tools"
+          curl --fail --location --retry 3 \
+            -o "$RUNNER_TEMP/rea-tools/jadx-headless-mcp-0.7.1-all.jar" \
+            "https://github.com/1013503897/jadx-headless-mcp/releases/download/v0.7.1/jadx-headless-mcp-0.7.1-all.jar"
+          printf '%s  %s\n' \
+            '6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75' \
+            "$RUNNER_TEMP/rea-tools/jadx-headless-mcp-0.7.1-all.jar" | sha256sum -c -
+          echo "REA_JADX_MCP_JAR=$RUNNER_TEMP/rea-tools/jadx-headless-mcp-0.7.1-all.jar" >> "$GITHUB_ENV"
+      - name: Compilar LAB 1 unsigned
+        run: gradle --no-daemon --console=plain -p primeapps-vm :app:assembleRelease
+      - name: Evidencias de engenharia reversa no proprio LAB
+        run: |
+          mkdir -p reports
+          rea inspect-android-package \
+            "primeapps-vm/app/build/outputs/apk/release/app-release-unsigned.apk" \
+            --json > reports/rea-lab1.json
+          python3 -m json.tool reports/rea-lab1.json > /dev/null
+          echo "REA produziu JSON valido"
+      - name: Disponibilizar APK e relatorio
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PrimeApps-VM-LAB1-unsigned-REA
+          path: |
+            primeapps-vm/app/build/outputs/apk/release/*.apk
+            reports/rea-lab1.json
+          if-no-files-found: warn
+          retention-days: 14
