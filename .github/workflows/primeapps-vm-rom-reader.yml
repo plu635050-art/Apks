@@ -18,7 +18,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - name: Validate source syntax and reconstruct synthetic ROM
+      - name: Install ext4 filesystem tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq e2fsprogs
+          command -v mke2fs
+          command -v debugfs
+      - name: Validate ROM reader and build/read ext4 guest image
         run: |
           set -euo pipefail
           python -m compileall -q primeapps-vm/rom-engine
