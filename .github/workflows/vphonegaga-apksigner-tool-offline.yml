@@ -1,0 +1,41 @@
+name: VPhoneGaGa Android signing tools
+on:
+  push:
+    branches: [audit/vphonegaga-gold-android16-20261028]
+    paths: [".github/workflows/vphonegaga-apksigner-tool-offline.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: SDK official tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)"
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" --sdk_root="$SDK_ROOT" "build-tools;35.0.0"
+          ROOT="$SDK_ROOT/build-tools/35.0.0"
+          test -x "$ROOT/apksigner"
+          test -f "$ROOT/lib/apksigner.jar"
+          mkdir -p signer/lib
+          cp "$ROOT/apksigner" signer/
+          cp "$ROOT/lib/apksigner.jar" signer/lib/
+          tar -czf apksigner-offline-35.0.0.tgz signer
+          sha256sum apksigner-offline-35.0.0.tgz
+      - name: Upload trusted build tool
+        uses: actions/upload-artifact@v4
+        with:
+          name: apksigner-offline-35.0.0
+          path: apksigner-offline-35.0.0.tgz
+          if-no-files-found: error
