@@ -1,10 +1,10 @@
-name: PrimeAppPlayer LAB8 Web Only
+name: Prime Player LAB9 - Original PWA WebView
 on:
   push:
-    branches: [fix/prime-player-lab8-web-only-20261029]
+    branches: [fix/prime-player-lab9-original-pwa-webview-20261029]
   workflow_dispatch:
 jobs:
-  android:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -13,47 +13,41 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Install Android 36 SDK
+      - name: Install Android SDK 36
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-36" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
-      - name: Validate same-session live player JavaScript
+      - name: Verify original PWA player is not replaced
         run: |
-          node --check app/src/main/assets/same_player.js
-          node --check app/src/main/assets/vod_popup.js
           python3 - <<'PY'
           from pathlib import Path
-          main=Path('app/src/main/java/com/primeapps/webplayer/MainActivity.java').read_text()
-          js=Path('app/src/main/assets/same_player.js').read_text()
-          vod=Path('app/src/main/assets/vod_popup.js').read_text()
-          assert 'public void playLive(String url,String title,String format)' in main
-          assert 'useSamePlayer(false,false,false);' in main
-          assert 'useSamePlayer(false,true,false);' in main
-          assert 'srcObject' in js and 'currentVideo()' in js
-          assert 'video.pause()' in js and 'video.play()' in js
-          assert 'void popupWebVideo()' in main
-          assert 'loadVodPopupScript()' in main
-          assert 'ic_popup_sync' not in main
-          assert 'new ImageButton' not in main
-          assert 'playPopupVod(' in main
-          assert 'startNativePlayback(' not in main
-          assert 'NativeVideoActivity' not in main
-          assert 'FloatingPlayback' not in main
-          assert 'ExoPlayer' not in main
-          assert 'media3' not in Path('app/build.gradle').read_text()
-          assert 'NativeVideoActivity' not in Path('app/src/main/AndroidManifest.xml').read_text()
-          for name in ('NativeVideoActivity.java','FloatingPlayback.java','StreamHttp.java'):
-              assert not (Path('app/src/main/java/com/primeapps/webplayer')/name).exists()
-          assert 'PrimeAppsVodPopup' in vod and 'requestPictureInPicture(' not in vod
-          assert 'kind: kind === "vod"' in js
-          assert 'primeapps-native-vod-result' in js
-          print('LAB8 same-player static contract passed')
+          main = Path('app/src/main/java/com/primeapps/webplayer/MainActivity.java').read_text()
+          gradle = Path('app/build.gradle').read_text()
+          manifest = Path('app/src/main/AndroidManifest.xml').read_text()
+          assets = Path('app/src/main/assets')
+          assert 'https://primeappswebplayer.lovable.app/' in main
+          assert 'web.loadUrl(START_URL)' in main
+          assert 'web.addJavascriptInterface(' not in main
+          assert 'browser.addJavascriptInterface(' not in main
+          assert 'web.evaluateJavascript(script' not in main
+          assert 'onShowCustomView' in main and 'onHideCustomView' in main
+          assert 'onShowFileChooser' in main
+          assert 'android:supportsPictureInPicture=' not in manifest
+          assert 'android.software.picture_in_picture' not in manifest
+          assert 'media3' not in gradle
+          assert "minSdk 21" in gradle and "versionCode 9" in gradle
+          for name in ('same_player.js', 'vod_popup.js'):
+              assert not (assets / name).exists(), name
+          for name in ('NativeVideoActivity.java', 'FloatingPlayback.java', 'StreamHttp.java'):
+              assert not (Path('app/src/main/java/com/primeapps/webplayer') / name).exists(), name
+          assert 'WebChromeClient' in main and 'setDomStorageEnabled(true)' in main
+          print('LAB9 OK: original PWA, no player overrides, no popup')
           PY
-      - name: Compile and package debug signed and release unsigned
+      - name: Compile signed debug and unsigned release
         run: gradle --no-daemon :app:assembleDebug :app:assembleRelease
-      - name: Verify APKs exist
+      - name: Verify APK and signature
         run: |
           test -s app/build/outputs/apk/debug/app-debug.apk
           test -s app/build/outputs/apk/release/app-release-unsigned.apk
@@ -61,13 +55,13 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -E "package:|application-label:|sdkVersion:|targetSdkVersion:"
       - uses: actions/upload-artifact@v4
         with:
-          name: PRIME_PLAYER_LAB8_ASSINADO_TESTE
+          name: PRIME_PLAYER_LAB9_ASSINADO_TESTE
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
-          name: PRIME_PLAYER_LAB8_RELEASE_SEM_ASSINAR
+          name: PRIME_PLAYER_LAB9_SEM_ASSINAR
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: error
           retention-days: 14
