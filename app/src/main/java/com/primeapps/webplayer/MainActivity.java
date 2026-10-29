@@ -28,6 +28,8 @@ public final class MainActivity extends Activity {
     private static final String HOME="https://primeappswebplayer.lovable.app/";
     private static final String TRUSTED_HOST="primeappswebplayer.lovable.app";
     private static final int VIDEO_REQUEST=882;
+    private static final int LIVE_REQUEST=883;
+    private boolean nativeVideoOpen=false;
     private FrameLayout root;
     private WebView browser;
     private ImageButton refresh;
@@ -67,7 +69,7 @@ public final class MainActivity extends Activity {
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(true);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
-        browser.addJavascriptInterface(new NativeVodBridge(),"PrimeAppsNative");
+        browser.addJavascriptInterface(new NativePlaybackBridge(),"PrimeAppsNative");
         browser.setWebViewClient(new WebViewClient(){
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 return request.isForMainFrame() && !isInternal(request.getUrl());
@@ -126,34 +128,56 @@ public final class MainActivity extends Activity {
         if(refresh!=null)refresh.setVisibility(View.VISIBLE);
         fullscreen();
     }
-    private final class NativeVodBridge {
+    // Explicit entry points: the website decides when a movie or live TV goes fullscreen.
+    // TV mini-player remains in the WebView; no automatic URL or button interception.
+    private final class NativePlaybackBridge {
         @JavascriptInterface public void playVod(String url,String title,long startMs,String format){
-            if(url==null||url.length()>8192)return;
-            Uri u;
-            try{u=Uri.parse(url);}catch(Exception e){return;}
-            String scheme=u.getScheme();
-            if(!"https".equalsIgnoreCase(scheme)&&!"http".equalsIgnoreCase(scheme))return;
-            runOnUiThread(()->{
-                if(isFinishing())return;
-                Intent i=new Intent(MainActivity.this,NativeVideoActivity.class);
-                i.putExtra("url",url);
-                i.putExtra("title",title==null?"":title.substring(0,Math.min(200,title.length())));
-                i.putExtra("start",Math.max(0,startMs));
-                i.putExtra("format",format==null?"":format);
-                startActivityForResult(i,VIDEO_REQUEST);
-            });
+            startNativePlayback(url,title,startMs,format,false);
         }
+        @JavascriptInterface public void playLive(String url,String title,String format){
+            startNativePlayback(url,title,0L,format,true);
+        }
+    }
+    private void startNativePlayback(String url,String title,long startMs,String format,boolean live){
+        if(url==null || url.length()>8192 || title!=null && title.length()>2000)return;
+        Uri uri;
+        try{uri=Uri.parse(url);}catch(Exception ignored){return;}
+        String scheme=uri.getScheme();
+        if(!"https".equalsIgnoreCase(scheme)&&!"http".equalsIgnoreCase(scheme))return;
+        if(uri.getHost()==null || uri.getHost().trim().isEmpty())return;
+        runOnUiThread(()->{
+            if(isFinishing() || browser==null || nativeVideoOpen)return;
+            String current=browser.getUrl();
+            if(current==null || !isInternal(Uri.parse(current)))return;
+            nativeVideoOpen=true;
+            Intent i=new Intent(MainActivity.this,NativeVideoActivity.class);
+            i.putExtra("url",url);
+            i.putExtra("title",title==null?"":title.substring(0,Math.min(200,title.length())));
+            i.putExtra("start",Math.max(0L,startMs));
+            i.putExtra("format",format==null?"":format.substring(0,Math.min(24,format.length())));
+            i.putExtra("isLive",live);
+            try{
+                startActivityForResult(i,live?LIVE_REQUEST:VIDEO_REQUEST);
+            }catch(Exception e){
+                nativeVideoOpen=false;
+                browser.evaluateJavascript("window.dispatchEvent(new CustomEvent('primeapps-native-player-failed'));",null);
+            }
+        });
     }
     @Override protected void onActivityResult(int req,int code,Intent data){
         super.onActivityResult(req,code,data);
-        if(req==VIDEO_REQUEST&&browser!=null){
-            long pos=data==null?0:data.getLongExtra("positionMs",0);
-            boolean ended=data!=null&&data.getBooleanExtra("ended",false);
-            String js="window.dispatchEvent(new CustomEvent('primeapps-native-vod-result',{detail:{positionMs:"+
-                pos+",ended:"+(ended?"true":"false")+"}}));";
-            browser.evaluateJavascript(js,null);
-            browser.requestFocus();
-        }
+        if(req!=VIDEO_REQUEST && req!=LIVE_REQUEST)return;
+        nativeVideoOpen=false;
+        if(browser==null)return;
+        long pos=data==null?0:data.getLongExtra("positionMs",0);
+        boolean ended=data!=null&&data.getBooleanExtra("ended",false);
+        String error=data==null?"":data.getStringExtra("errorCode");
+        String js="window.dispatchEvent(new CustomEvent('"+
+            (req==LIVE_REQUEST?"primeapps-native-live-result":"primeapps-native-vod-result")+
+            "',{detail:{positionMs:"+Math.max(0L,pos)+",ended:"+(ended?"true":"false")+
+            ",error:"+JSONObject.quote(error==null?"":error)+"}}));";
+        browser.evaluateJavascript(js,null);
+        browser.requestFocus();
     }
     @Override public boolean onKeyDown(int key,KeyEvent e){
         if(key==KeyEvent.KEYCODE_MENU||key==KeyEvent.KEYCODE_F5){

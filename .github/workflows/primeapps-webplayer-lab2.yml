@@ -1,7 +1,7 @@
-name: PrimeAppPlayer LAB2 build
+name: PrimeAppPlayer LAB3 Live Native build
 on:
   push:
-    branches: [lab/primeapps-webplayer-android-20261029]
+    branches: [lab/primeapps-webplayer-live-native-lab3-20261029]
   workflow_dispatch:
 jobs:
   android:
@@ -23,13 +23,13 @@ jobs:
         run: gradle --no-daemon :app:assembleDebug :app:assembleRelease
       - uses: actions/upload-artifact@v4
         with:
-          name: PRIME_APP_PLAYER_LAB2_ASSINADO_TESTE
+          name: PRIME_APP_PLAYER_LAB3_ASSINADO_TESTE
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
-          name: PRIME_APP_PLAYER_LAB2_RELEASE_SEM_ASSINAR
+          name: PRIME_APP_PLAYER_LAB3_RELEASE_SEM_ASSINAR
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: error
           retention-days: 14

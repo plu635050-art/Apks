@@ -26,6 +26,9 @@ public final class NativeVideoActivity extends Activity {
     private PlayerView playerView;
     private boolean ended=false;
     private long lastPosition=0;
+    private boolean isLive=false;
+    private boolean exiting=false;
+    private String failureCode="";
     private void fullscreen(){
         getWindow().getDecorView().setSystemUiVisibility(
             View.SYSTEM_UI_FLAG_LAYOUT_STABLE|View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION|
@@ -38,6 +41,7 @@ public final class NativeVideoActivity extends Activity {
         fullscreen();
         Intent input=getIntent();
         String url=input.getStringExtra("url");
+        isLive=input.getBooleanExtra("isLive",false);
         if(url==null||url.isEmpty()){finish();return;}
         playerView=new PlayerView(this);
         playerView.setBackgroundColor(Color.BLACK);
@@ -63,7 +67,9 @@ public final class NativeVideoActivity extends Activity {
             player.setMediaItem(item.build());
             player.addListener(new Player.Listener(){
                 @Override public void onPlayerError(PlaybackException error){
-                    Toast.makeText(NativeVideoActivity.this,"Vídeo indisponível: "+error.getErrorCodeName(),Toast.LENGTH_LONG).show();
+                    failureCode=error.getErrorCodeName();
+                    Toast.makeText(NativeVideoActivity.this,"Reprodução indisponível: "+failureCode,Toast.LENGTH_LONG).show();
+                    endPlayer();
                 }
                 @Override public void onPlaybackStateChanged(int state){
                     if(state==Player.STATE_ENDED){ended=true;endPlayer();}
@@ -74,15 +80,20 @@ public final class NativeVideoActivity extends Activity {
             if(start>0)player.seekTo(start);
             player.play();
         }catch(Exception exc){
+            failureCode="INITIALIZATION_ERROR";
             Toast.makeText(this,"Não foi possível iniciar o motor nativo.",Toast.LENGTH_LONG).show();
             endPlayer();
         }
     }
     private void endPlayer(){
-        if(player!=null)lastPosition=player.getCurrentPosition();
+        if(exiting)return;
+        exiting=true;
+        if(player!=null)lastPosition=Math.max(0L,player.getCurrentPosition());
         Intent result=new Intent();
         result.putExtra("positionMs",lastPosition);
         result.putExtra("ended",ended);
+        result.putExtra("errorCode",failureCode);
+        result.putExtra("isLive",isLive);
         setResult(RESULT_OK,result);
         finish();
     }

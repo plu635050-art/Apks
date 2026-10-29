@@ -6,8 +6,8 @@ android {
         applicationId 'com.primeapps.webplayer'
         minSdk 21
         targetSdk 35
-        versionCode 2
-        versionName '1.0.0-lab2'
+        versionCode 3
+        versionName '1.0.0-lab3'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
