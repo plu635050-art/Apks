@@ -1,7 +1,7 @@
-name: PrimeAppPlayer LAB3 Live Native build
+name: PrimeAppPlayer LAB4 PiP and Icon
 on:
   push:
-    branches: [lab/primeapps-webplayer-live-native-lab3-20261029]
+    branches: [lab/primeapps-webplayer-lab4-pip-20261029]
   workflow_dispatch:
 jobs:
   android:
@@ -13,23 +13,29 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Install API 36 SDK
+      - name: Install Android 36 SDK
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-36" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
-      - name: Build signed debug APK and unsigned release APK
+      - name: Compile and package debug signed and release unsigned
         run: gradle --no-daemon :app:assembleDebug :app:assembleRelease
+      - name: Verify APKs exist
+        run: |
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -E "package:|application-label:|sdkVersion:|targetSdkVersion:"
       - uses: actions/upload-artifact@v4
         with:
-          name: PRIME_APP_PLAYER_LAB3_ASSINADO_TESTE
+          name: PRIME_PLAYER_LAB4_ASSINADO_TESTE
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
-          name: PRIME_APP_PLAYER_LAB3_RELEASE_SEM_ASSINAR
+          name: PRIME_PLAYER_LAB4_RELEASE_SEM_ASSINAR
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: error
           retention-days: 14
