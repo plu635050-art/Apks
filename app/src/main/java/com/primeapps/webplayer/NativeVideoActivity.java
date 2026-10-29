@@ -10,6 +10,8 @@ import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Rational;
 import android.view.Gravity;
 import android.view.View;
@@ -17,7 +19,6 @@ import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.widget.FrameLayout;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
@@ -44,6 +45,10 @@ public final class NativeVideoActivity extends Activity {
     private boolean playingBeforeBackground = false;
     private long positionMs = 0;
     private String failureCode = "";
+    private final Handler reconnectHandler = new Handler(Looper.getMainLooper());
+    private int retryCount = 0;
+    private long retryWindowStartMs = 0;
+    private static final int MAX_RECONNECTS_PER_MINUTE = 4;
 
     private int dp(int n) {
         return Math.round(n * getResources().getDisplayMetrics().density);
@@ -101,17 +106,7 @@ public final class NativeVideoActivity extends Activity {
         root.addView(popupButton, buttonParams);
         popupButton.setOnClickListener(v -> enterPopup());
         try {
-            DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
-                    .setAllowCrossProtocolRedirects(true);
-            String cookie = CookieManager.getInstance().getCookie(url);
-            if (cookie != null && !cookie.isEmpty()) {
-                Map<String, String> headers = new HashMap<>();
-                headers.put("Cookie", cookie);
-                http.setDefaultRequestProperties(headers);
-            }
-            DefaultDataSource.Factory source = new DefaultDataSource.Factory(this, http);
-            player = new ExoPlayer.Builder(this)
-                    .setMediaSourceFactory(new DefaultMediaSourceFactory(source)).build();
+            player = StreamHttp.makePlayer(this, url, input.getStringExtra("userAgent"));
             playerView.setPlayer(player);
             MediaItem.Builder item = new MediaItem.Builder().setUri(Uri.parse(url));
             String format = input.getStringExtra("format");
@@ -124,9 +119,8 @@ public final class NativeVideoActivity extends Activity {
             player.setMediaItem(item.build());
             player.addListener(new Player.Listener() {
                 @Override public void onPlayerError(PlaybackException e) {
-                    failureCode = e.getErrorCodeName();
-                    Toast.makeText(NativeVideoActivity.this, "Reprodução indisponível: " + failureCode,
-                        Toast.LENGTH_LONG).show();
+                    if (scheduleReconnect(e)) return;
+                    failureCode = StreamHttp.safeError(e);
                     finishWithResult(false);
                 }
                 @Override public void onPlaybackStateChanged(int status) {
@@ -149,6 +143,25 @@ public final class NativeVideoActivity extends Activity {
             finishWithResult(false);
         }
     }
+    private boolean scheduleReconnect(PlaybackException error) {
+        if (!live || exiting || player == null || !StreamHttp.canRetry(error)) return false;
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (retryWindowStartMs == 0 || now - retryWindowStartMs > 60000) {
+            retryWindowStartMs = now;
+            retryCount = 0;
+        }
+        if (retryCount >= MAX_RECONNECTS_PER_MINUTE) return false;
+        retryCount++;
+        long delay = Math.min(12000L, 1500L << (retryCount - 1));
+        reconnectHandler.postDelayed(() -> {
+            if (exiting || player == null) return;
+            player.seekToDefaultPosition();
+            player.prepare();
+            player.play();
+        }, delay);
+        return true;
+    }
+
     private void enterPopup() {
         if (exiting || player == null) return;
         if (Build.VERSION.SDK_INT >= 26 &&
@@ -208,6 +221,7 @@ public final class NativeVideoActivity extends Activity {
         if (!inPip) fullscreen();
     }
     @Override protected void onDestroy() {
+        reconnectHandler.removeCallbacksAndMessages(null);
         if (playerView != null) playerView.setPlayer(null);
         if (player != null) {
             player.release();
