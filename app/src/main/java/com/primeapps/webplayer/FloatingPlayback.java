@@ -5,6 +5,8 @@ import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.view.Gravity;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 import android.webkit.CookieManager;
 import android.widget.FrameLayout;
@@ -43,6 +45,9 @@ public final class FloatingPlayback {
     private boolean released = false;
     private boolean resumeAfterBackground = false;
     private final boolean live;
+    private final Handler reconnectHandler = new Handler(Looper.getMainLooper());
+    private int retryCount = 0;
+    private long retryWindowStartMs = 0;
 
     private int dp(int dp) {
         return Math.round(dp * host.getResources().getDisplayMetrics().density);
@@ -63,7 +68,7 @@ public final class FloatingPlayback {
         return v;
     }
     public FloatingPlayback(Activity host, FrameLayout root, String url,
-                            String format, long startMs, boolean live, Callback callback) {
+                            String format, long startMs, boolean live, String userAgent, Callback callback) {
         this.host = host;
         this.root = root;
         this.live = live;
@@ -113,17 +118,7 @@ public final class FloatingPlayback {
         close.setOnKeyListener((v, key, event) -> false);
 
         try {
-            DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
-                    .setAllowCrossProtocolRedirects(true);
-            String cookies = CookieManager.getInstance().getCookie(url);
-            if (cookies != null && !cookies.isEmpty()) {
-                Map<String, String> headers = new HashMap<>();
-                headers.put("Cookie", cookies);
-                http.setDefaultRequestProperties(headers);
-            }
-            DefaultDataSource.Factory data = new DefaultDataSource.Factory(host, http);
-            player = new ExoPlayer.Builder(host)
-                    .setMediaSourceFactory(new DefaultMediaSourceFactory(data)).build();
+            player = StreamHttp.makePlayer(host, url, userAgent);
             view.setPlayer(player);
             MediaItem.Builder item = new MediaItem.Builder().setUri(Uri.parse(url));
             if ("hls".equalsIgnoreCase(format) || "m3u8".equalsIgnoreCase(format))
@@ -133,7 +128,8 @@ public final class FloatingPlayback {
             player.setMediaItem(item.build());
             player.addListener(new Player.Listener() {
                 @Override public void onPlayerError(PlaybackException e) {
-                    errorCode = e.getErrorCodeName();
+                    if (scheduleReconnect(e)) return;
+                    errorCode = StreamHttp.safeError(e);
                     close(errorCode);
                 }
                 @Override public void onPlaybackStateChanged(int state) {
@@ -147,12 +143,32 @@ public final class FloatingPlayback {
             close("FLOATING_PLAYER_INITIALIZATION_ERROR");
         }
     }
+    private boolean scheduleReconnect(PlaybackException error) {
+        if (!live || released || player == null || !StreamHttp.canRetry(error)) return false;
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (retryWindowStartMs == 0 || now - retryWindowStartMs > 60000) {
+            retryWindowStartMs = now;
+            retryCount = 0;
+        }
+        if (retryCount >= 4) return false;
+        retryCount++;
+        long delay = Math.min(12000L, 1500L << (retryCount - 1));
+        reconnectHandler.postDelayed(() -> {
+            if (released || player == null) return;
+            player.seekToDefaultPosition();
+            player.prepare();
+            player.play();
+        }, delay);
+        return true;
+    }
+
     public boolean isActive() { return !released; }
     private long position() {
         return player == null ? 0 : Math.max(0, player.getCurrentPosition());
     }
     private void release() {
         if (released) return;
+        reconnectHandler.removeCallbacksAndMessages(null);
         released = true;
         view.setPlayer(null);
         if (player != null) {
