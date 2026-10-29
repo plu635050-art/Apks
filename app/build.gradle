@@ -6,8 +6,8 @@ android {
         applicationId 'com.primeapps.webplayer'
         minSdk 21
         targetSdk 35
-        versionCode 7
-        versionName '1.0.0-lab7'
+        versionCode 8
+        versionName '1.0.0-lab8'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
@@ -19,11 +19,4 @@ android {
             shrinkResources false
         }
     }
-}
-dependencies {
-    def media3Version = '1.8.1'
-    implementation "androidx.media3:media3-exoplayer:$media3Version"
-    implementation "androidx.media3:media3-exoplayer-hls:$media3Version"
-    implementation "androidx.media3:media3-exoplayer-dash:$media3Version"
-    implementation "androidx.media3:media3-ui:$media3Version"
 }

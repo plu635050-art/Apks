@@ -9,10 +9,6 @@
       android:icon="@drawable/ic_prime_launcher" android:banner="@drawable/tv_banner"
       android:usesCleartextTraffic="true" android:hardwareAccelerated="true"
       android:allowBackup="false" android:supportsRtl="true">
-        <activity android:name=".NativeVideoActivity"
-          android:screenOrientation="sensorLandscape" android:exported="false"
-          android:supportsPictureInPicture="true" android:resizeableActivity="true"
-          android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|uiMode"/>
         <activity android:name=".MainActivity" android:exported="true"
           android:screenOrientation="sensorLandscape"
           android:supportsPictureInPicture="true" android:resizeableActivity="true"
