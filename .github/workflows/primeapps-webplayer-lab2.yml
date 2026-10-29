@@ -29,8 +29,8 @@ jobs:
           js=Path('app/src/main/assets/same_player.js').read_text()
           vod=Path('app/src/main/assets/vod_popup.js').read_text()
           assert 'public void playLive(String url,String title,String format)' in main
-          assert 'useSamePlayer(false);' in main
-          assert 'useSamePlayer(true);' in main
+          assert 'useSamePlayer(false,false,false);' in main
+          assert 'useSamePlayer(false,true,false);' in main
           assert 'srcObject' in js and 'currentVideo()' in js
           assert 'video.pause()' in js and 'video.play()' in js
           assert 'void popupWebVideo()' in main
