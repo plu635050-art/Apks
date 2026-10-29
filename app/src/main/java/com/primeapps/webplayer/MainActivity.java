@@ -31,7 +31,6 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
-import android.widget.ImageButton;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 import org.json.JSONObject;
@@ -43,10 +42,10 @@ public final class MainActivity extends Activity {
     private static final int LIVE_REQUEST=883;
     private boolean nativeVideoOpen=false;
     private String samePlayerScript;
+    private String vodPopupScript;
     private FloatingPlayback floatingPlayback;
     private FrameLayout root;
     private WebView browser;
-    private ImageButton refresh;
     private ProgressBar loading;
     private View webFullscreen;
     private FrameLayout webPopupWindow;
@@ -103,6 +102,8 @@ public final class MainActivity extends Activity {
                 if(isInternal(Uri.parse(url))){
                     String script=loadSamePlayerScript();
                     if(script!=null)view.evaluateJavascript(script,null);
+                    String vodScript=loadVodPopupScript();
+                    if(vodScript!=null)view.evaluateJavascript(vodScript,null);
                 }
             }
             @Override public void onReceivedError(WebView view,WebResourceRequest req,WebResourceError error) {
@@ -117,7 +118,6 @@ public final class MainActivity extends Activity {
                 if(webFullscreen!=null){callback.onCustomViewHidden();return;}
                 webFullscreen=view; fullscreenCallback=callback;
                 root.addView(view,new FrameLayout.LayoutParams(-1,-1));
-                refresh.setVisibility(View.GONE);
                 showWebPopupButton();
                 fullscreen();
             }
@@ -142,16 +142,6 @@ public final class MainActivity extends Activity {
         root.addView(browser,new FrameLayout.LayoutParams(-1,-1));
         loading=new ProgressBar(this);
         root.addView(loading,new FrameLayout.LayoutParams(dp(42),dp(42),Gravity.CENTER));
-        refresh=new ImageButton(this);
-        refresh.setImageResource(android.R.drawable.ic_popup_sync);
-        refresh.setContentDescription(getString(R.string.refresh));
-        refresh.setBackgroundColor(Color.argb(220,42,34,38));
-        refresh.setColorFilter(Color.WHITE);
-        refresh.setFocusable(false);
-        refresh.setOnClickListener(v->reload());
-        FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(dp(42),dp(42),Gravity.RIGHT|Gravity.TOP);
-        p.topMargin=dp(10);p.rightMargin=dp(12);
-        root.addView(refresh,p);
         browser.loadUrl(HOME);
     }
     private boolean isInternal(Uri u){
@@ -178,7 +168,7 @@ public final class MainActivity extends Activity {
         webPopupButton.setContentDescription("Abrir filme em janela pop-up");
         FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(dp(124),dp(44),
                 Gravity.TOP|Gravity.RIGHT);
-        p.topMargin=dp(12);
+        p.topMargin=dp(72);
         p.rightMargin=dp(14);
         root.addView(webPopupButton,p);
         webPopupButton.setOnClickListener(v->openWebPopup());
@@ -252,12 +242,15 @@ public final class MainActivity extends Activity {
         WebChromeClient.CustomViewCallback cb=fullscreenCallback;
         fullscreenCallback=null;
         if(cb!=null)cb.onCustomViewHidden();
-        if(refresh!=null)refresh.setVisibility(View.VISIBLE);
         fullscreen();
     }
     @Override public void onPictureInPictureModeChanged(boolean pip,Configuration config){
         super.onPictureInPictureModeChanged(pip,config);
         if(!pip && webFullscreen!=null && webPopupWindow==null)showWebPopupButton();
+        if(browser!=null){
+            browser.evaluateJavascript("window.dispatchEvent(new CustomEvent("+
+              "'primeapps-app-pip-changed',{detail:{active:"+(pip?"true":"false")+"}}));",null);
+        }
         if(!pip)fullscreen();
     }
     // Explicit entry points: the website decides when a movie or live TV goes fullscreen.
@@ -276,6 +269,41 @@ public final class MainActivity extends Activity {
         }
         @JavascriptInterface public void playPopupVod(String url,String title,long startMs,String format){
             startNativePlayback(url,title,startMs,format,false,true);
+        }
+        // PWA-like POP-UP reuses the already-playing HTML5 video in this WebView.
+        @JavascriptInterface public void popupWebVideo(){
+            runOnUiThread(()->openExistingWebVideoPopup());
+        }
+    }
+    private String loadVodPopupScript(){
+        if(vodPopupScript!=null)return vodPopupScript;
+        try(InputStream stream=getAssets().open("vod_popup.js");
+            ByteArrayOutputStream out=new ByteArrayOutputStream()){
+            byte[] chunk=new byte[4096];
+            int n;
+            while((n=stream.read(chunk))!=-1)out.write(chunk,0,n);
+            vodPopupScript=new String(out.toByteArray(),StandardCharsets.UTF_8);
+            return vodPopupScript;
+        }catch(Exception ignored){return null;}
+    }
+    private void openExistingWebVideoPopup(){
+        if(browser==null||isFinishing()||nativeVideoOpen)return;
+        if(webFullscreen!=null){
+            openWebPopup();
+            return;
+        }
+        if(Build.VERSION.SDK_INT>=26 &&
+            getPackageManager().hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)){
+            try{
+                PictureInPictureParams params=new PictureInPictureParams.Builder()
+                   .setAspectRatio(new Rational(16,9)).build();
+                if(enterPictureInPictureMode(params))return;
+            }catch(Exception ignored){}
+        }
+        String script=loadSamePlayerScript();
+        if(script!=null){
+            browser.evaluateJavascript(script,ignored->browser.evaluateJavascript(
+               "window.PrimeAppsSamePlayer && window.PrimeAppsSamePlayer.enter('popup','vod');",null));
         }
     }
     private String loadSamePlayerScript(){
