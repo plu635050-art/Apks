@@ -10,11 +10,9 @@ import android.util.Rational;
 import android.graphics.drawable.GradientDrawable;
 import android.webkit.JsResult;
 import android.widget.TextView;
-import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
-import android.content.res.AssetManager;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -33,17 +31,13 @@ import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.ProgressBar;
 import android.widget.Toast;
-import org.json.JSONObject;
 
 public final class MainActivity extends Activity {
     private static final String HOME="https://primeappswebplayer.lovable.app/";
     private static final String TRUSTED_HOST="primeappswebplayer.lovable.app";
-    private static final int VIDEO_REQUEST=882;
-    private static final int LIVE_REQUEST=883;
-    private boolean nativeVideoOpen=false;
+    private boolean pipFromSameVideo=false;
     private String samePlayerScript;
     private String vodPopupScript;
-    private FloatingPlayback floatingPlayback;
     private FrameLayout root;
     private WebView browser;
     private ProgressBar loading;
@@ -247,192 +241,101 @@ public final class MainActivity extends Activity {
     @Override public void onPictureInPictureModeChanged(boolean pip,Configuration config){
         super.onPictureInPictureModeChanged(pip,config);
         if(!pip && webFullscreen!=null && webPopupWindow==null)showWebPopupButton();
+        if(!pip && pipFromSameVideo && browser!=null){
+            pipFromSameVideo=false;
+            browser.evaluateJavascript("window.PrimeAppsSamePlayer && window.PrimeAppsSamePlayer.exit()",null);
+        }
         if(browser!=null){
             browser.evaluateJavascript("window.dispatchEvent(new CustomEvent("+
               "'primeapps-app-pip-changed',{detail:{active:"+(pip?"true":"false")+"}}));",null);
         }
         if(!pip)fullscreen();
     }
-    // Explicit entry points: the website decides when a movie or live TV goes fullscreen.
-    // TV mini-player remains in the WebView; no automatic URL or button interception.
+    // Existing Lovable calls remain compatible, but no Android media engine is started.
     private final class NativePlaybackBridge {
-        @JavascriptInterface public void playVod(String url,String title,long startMs,String format){
-            startNativePlayback(url,title,startMs,format,false);
+        @JavascriptInterface public void playVod(String url,String title,long startMs,String format) {
+            useSamePlayer(false,true,false);
         }
-        // Live TV is already playing through hls.js/mpegts.js on the same WebView video.
-        // Never open a second ExoPlayer connection merely to make it fullscreen.
-        @JavascriptInterface public void playLive(String url,String title,String format){
-            useSamePlayer(false);
+        @JavascriptInterface public void playLive(String url,String title,String format) {
+            useSamePlayer(false,false,false);
         }
-        @JavascriptInterface public void playPopup(String url,String title,String format){
-            useSamePlayer(true);
+        @JavascriptInterface public void playPopup(String url,String title,String format) {
+            popupWebVideo(false);
         }
-        @JavascriptInterface public void playPopupVod(String url,String title,long startMs,String format){
-            startNativePlayback(url,title,startMs,format,false,true);
+        @JavascriptInterface public void playPopupVod(String url,String title,long startMs,String format) {
+            popupWebVideo(true);
         }
-        // PWA-like POP-UP reuses the already-playing HTML5 video in this WebView.
-        @JavascriptInterface public void popupWebVideo(){
-            runOnUiThread(()->openExistingWebVideoPopup());
+        @JavascriptInterface public void popupWebVideo() {
+            popupWebVideo(true);
         }
     }
-    private String loadVodPopupScript(){
-        if(vodPopupScript!=null)return vodPopupScript;
-        try(InputStream stream=getAssets().open("vod_popup.js");
-            ByteArrayOutputStream out=new ByteArrayOutputStream()){
+    private String loadScript(String name) {
+        try(InputStream input=getAssets().open(name);
+            ByteArrayOutputStream output=new ByteArrayOutputStream()) {
             byte[] chunk=new byte[4096];
-            int n;
-            while((n=stream.read(chunk))!=-1)out.write(chunk,0,n);
-            vodPopupScript=new String(out.toByteArray(),StandardCharsets.UTF_8);
-            return vodPopupScript;
+            int size;
+            while((size=input.read(chunk))!=-1)output.write(chunk,0,size);
+            return new String(output.toByteArray(),StandardCharsets.UTF_8);
         }catch(Exception ignored){return null;}
     }
-    private void openExistingWebVideoPopup(){
-        if(browser==null||isFinishing()||nativeVideoOpen)return;
-        if(webFullscreen!=null){
-            openWebPopup();
-            return;
-        }
-        if(Build.VERSION.SDK_INT>=26 &&
-            getPackageManager().hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)){
-            try{
-                PictureInPictureParams params=new PictureInPictureParams.Builder()
-                   .setAspectRatio(new Rational(16,9)).build();
-                if(enterPictureInPictureMode(params))return;
-            }catch(Exception ignored){}
-        }
-        String script=loadSamePlayerScript();
-        if(script!=null){
-            browser.evaluateJavascript(script,ignored->browser.evaluateJavascript(
-               "window.PrimeAppsSamePlayer && window.PrimeAppsSamePlayer.enter('popup','vod');",null));
-        }
+    private String loadSamePlayerScript() {
+        if(samePlayerScript==null)samePlayerScript=loadScript("same_player.js");
+        return samePlayerScript;
     }
-    private String loadSamePlayerScript(){
-        if(samePlayerScript!=null)return samePlayerScript;
-        try(InputStream stream=getAssets().open("same_player.js");
-            ByteArrayOutputStream out=new ByteArrayOutputStream()){
-            byte[] chunk=new byte[4096];
-            int n;
-            while((n=stream.read(chunk))!=-1)out.write(chunk,0,n);
-            samePlayerScript=new String(out.toByteArray(),StandardCharsets.UTF_8);
-            return samePlayerScript;
-        }catch(Exception ignored){return null;}
+    private String loadVodPopupScript() {
+        if(vodPopupScript==null)vodPopupScript=loadScript("vod_popup.js");
+        return vodPopupScript;
     }
-    private void useSamePlayer(boolean popup){
+    private boolean enterSystemPip() {
+        if(Build.VERSION.SDK_INT<26 ||
+            !getPackageManager().hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE))
+            return false;
+        try {
+            PictureInPictureParams params=new PictureInPictureParams.Builder()
+                .setAspectRatio(new Rational(16,9)).build();
+            return enterPictureInPictureMode(params);
+        }catch(Exception ignored){return false;}
+    }
+    private void popupWebVideo(boolean vod) {
+        runOnUiThread(()-> {
+            if(browser==null || isFinishing())return;
+            if(webFullscreen!=null){openWebPopup();return;}
+            useSamePlayer(true,vod,true);
+        });
+    }
+    private void emitPlayerError(boolean vod,String code) {
+        if(browser==null)return;
+        String event=vod?"primeapps-native-vod-result":"primeapps-native-live-result";
+        browser.evaluateJavascript("window.dispatchEvent(new CustomEvent('"+event+
+            "',{detail:{ok:false,status:'error',error:'"+code+"'}}));",null);
+    }
+    private void useSamePlayer(boolean popup,boolean vod,boolean preferSystemPip) {
         runOnUiThread(()->{
-            if(browser==null||isFinishing()||nativeVideoOpen)return;
+            if(browser==null||isFinishing())return;
             String current=browser.getUrl();
             if(current==null || !isInternal(Uri.parse(current)))return;
             String script=loadSamePlayerScript();
-            if(script==null){
-                browser.evaluateJavascript(
-                    "window.dispatchEvent(new CustomEvent('primeapps-native-live-result',{detail:{ok:false,status:'error',error:'SAME_PLAYER_SCRIPT_UNAVAILABLE'}}));",null);
-                return;
-            }
-            // Evaluate in the same page; do not create an Activity, ExoPlayer, or connection.
-            browser.evaluateJavascript(script,ignored->
-                browser.evaluateJavascript(
-                    "(window.PrimeAppsSamePlayer && window.PrimeAppsSamePlayer.enter('"+
-                    (popup?"popup":"fullscreen")+"')) || 'missing'",
-                    value->{
-                        if(value!=null && value.contains("missing")){
+            if(script==null){emitPlayerError(vod,"SAME_PLAYER_UNAVAILABLE");return;}
+            String kind=vod?"vod":"live";
+            String mode=popup&&!preferSystemPip?"popup":"fullscreen";
+            browser.evaluateJavascript(script,ignored->browser.evaluateJavascript(
+                "(window.PrimeAppsSamePlayer && window.PrimeAppsSamePlayer.enter('"+
+                    mode+"','"+kind+"')) || 'missing'",
+                value->{
+                    if(value==null || !value.contains("same")){
+                        emitPlayerError(vod,"ACTIVE_WEB_VIDEO_NOT_FOUND");
+                        return;
+                    }
+                    if(popup && preferSystemPip){
+                        if(enterSystemPip()){
+                            pipFromSameVideo=true;
+                        }else {
                             browser.evaluateJavascript(
-                                "window.dispatchEvent(new CustomEvent('primeapps-native-live-result',{detail:{ok:false,status:'error',error:'ACTIVE_WEB_VIDEO_NOT_FOUND'}}));",null);
+                                "window.PrimeAppsSamePlayer.enter('popup','"+kind+"')",null);
                         }
-                    })
-            );
+                    }
+                }));
         });
-    }
-    private void startNativePlayback(String url,String title,long startMs,String format,boolean live){
-        startNativePlayback(url,title,startMs,format,live,false);
-    }
-    private void startNativePlayback(String url,String title,long startMs,String format,
-                                     boolean live,boolean autoPopup){
-        if(url==null || url.length()>8192 || title!=null && title.length()>2000)return;
-        Uri uri;
-        try{uri=Uri.parse(url);}catch(Exception ignored){return;}
-        String scheme=uri.getScheme();
-        if(!"https".equalsIgnoreCase(scheme)&&!"http".equalsIgnoreCase(scheme))return;
-        if(uri.getHost()==null || uri.getHost().trim().isEmpty())return;
-        runOnUiThread(()->{
-            if(isFinishing() || browser==null || nativeVideoOpen)return;
-            String current=browser.getUrl();
-            if(current==null || !isInternal(Uri.parse(current)))return;
-            nativeVideoOpen=true;
-            Intent i=new Intent(MainActivity.this,NativeVideoActivity.class);
-            i.putExtra("url",url);
-            i.putExtra("title",title==null?"":title.substring(0,Math.min(200,title.length())));
-            i.putExtra("start",Math.max(0L,startMs));
-            i.putExtra("format",format==null?"":format.substring(0,Math.min(24,format.length())));
-            i.putExtra("isLive",live);
-            i.putExtra("autoPopup",autoPopup);
-            i.putExtra("userAgent",browser.getSettings().getUserAgentString());
-            try{
-                startActivityForResult(i,live?LIVE_REQUEST:VIDEO_REQUEST);
-            }catch(Exception e){
-                nativeVideoOpen=false;
-                browser.evaluateJavascript("window.dispatchEvent(new CustomEvent('primeapps-native-player-failed'));",null);
-            }
-        });
-    }
-    @Override protected void onActivityResult(int req,int code,Intent data){
-        super.onActivityResult(req,code,data);
-        if(req!=VIDEO_REQUEST && req!=LIVE_REQUEST)return;
-        if(data!=null && data.getBooleanExtra("popupFallback",false)){
-            String url=data.getStringExtra("url");
-            String title=data.getStringExtra("title");
-            String format=data.getStringExtra("format");
-            long pos=Math.max(0L,data.getLongExtra("positionMs",0L));
-            boolean live=data.getBooleanExtra("isLive",req==LIVE_REQUEST);
-            if(url!=null && root!=null){
-                try{
-                    floatingPlayback=new FloatingPlayback(this,root,url,format,pos,live,
-                        browser.getSettings().getUserAgentString(),new FloatingPlayback.Callback(){
-                            @Override public void onClosed(long endMs,String error){
-                                floatingPlayback=null;
-                                nativeVideoOpen=false;
-                                dispatchPlaybackResult(req,endMs,false,error);
-                            }
-                            @Override public void onExpand(long resumeMs){
-                                floatingPlayback=null;
-                                nativeVideoOpen=false;
-                                startNativePlayback(url,title,resumeMs,format,live);
-                            }
-                        });
-                    return;
-                }catch(Exception ignored){
-                    nativeVideoOpen=false;
-                    dispatchPlaybackResult(req,pos,false,"FLOATING_WINDOW_UNAVAILABLE");
-                    return;
-                }
-            }
-        }
-        nativeVideoOpen=false;
-        long pos=data==null?0:data.getLongExtra("positionMs",0);
-        boolean ended=data!=null&&data.getBooleanExtra("ended",false);
-        String error=data==null?"":data.getStringExtra("errorCode");
-        dispatchPlaybackResult(req,pos,ended,error);
-    }
-    private void dispatchPlaybackResult(int req,long pos,boolean ended,String error){
-        if(browser==null)return;
-        String message=error==null?"":error;
-        boolean ok=message.isEmpty();
-        try{
-            JSONObject details=new JSONObject();
-            details.put("positionMs",Math.max(0L,pos));
-            details.put("ended",ended);
-            details.put("error",message);
-            details.put("ok",ok);
-            details.put("status",ok?"closed":"error");
-            String event=req==LIVE_REQUEST?
-                 "primeapps-native-live-result":"primeapps-native-vod-result";
-            String js="window.dispatchEvent(new CustomEvent("+JSONObject.quote(event)+
-                ",{detail:"+details.toString()+"}));";
-            browser.evaluateJavascript(js,null);
-            browser.requestFocus();
-        }catch(Exception ignored){
-            browser.evaluateJavascript(
-                "window.dispatchEvent(new CustomEvent('primeapps-native-player-failed'));",null);
-        }
     }
     @Override public boolean onKeyDown(int key,KeyEvent e){
         if(key==KeyEvent.KEYCODE_MENU||key==KeyEvent.KEYCODE_F5){
@@ -451,29 +354,22 @@ public final class MainActivity extends Activity {
     }
     @Override @SuppressWarnings("deprecation")
     public void onBackPressed(){
-        if(floatingPlayback!=null && floatingPlayback.isActive()){
-            floatingPlayback.close("");
-            return;
-        }
         if(webFullscreen!=null){hideCustomVideo();return;}
         if(browser!=null){
-            browser.evaluateJavascript("(function(){var e=new KeyboardEvent('keydown',{key:'Escape',code:'Escape',bubbles:true,cancelable:true});(document.activeElement||document).dispatchEvent(e);})();",null);
+            browser.evaluateJavascript("(function(){if(window.PrimeAppsSamePlayer&&window.PrimeAppsSamePlayer.isActive()){window.PrimeAppsSamePlayer.exit();return;}var e=new KeyboardEvent('keydown',{key:'Escape',code:'Escape',bubbles:true,cancelable:true});(document.activeElement||document).dispatchEvent(e);})();",null);
         }else super.onBackPressed();
     }
     @Override protected void onResume(){
         super.onResume();
         fullscreen();
         if(browser!=null)browser.onResume();
-        if(floatingPlayback!=null)floatingPlayback.resumeAfterBackground();
     }
     @Override protected void onPause(){
-        if(floatingPlayback!=null)floatingPlayback.pauseForBackground();
         if(browser!=null && !(Build.VERSION.SDK_INT>=26 && isInPictureInPictureMode()))
             browser.onPause();
         super.onPause();
     }
     @Override protected void onDestroy(){
-        if(floatingPlayback!=null){floatingPlayback.dispose();floatingPlayback=null;}
         if(webFullscreen!=null)hideCustomVideo();
         if(browser!=null){root.removeView(browser);browser.destroy();browser=null;}
         super.onDestroy();
