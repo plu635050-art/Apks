@@ -1,7 +1,7 @@
-name: PrimeAppPlayer LAB6 Single Player Live
+name: PrimeAppPlayer LAB7 VOD PiP and Clean Controls
 on:
   push:
-    branches: [fix/prime-player-lab6-live-source-20261029]
+    branches: [fix/prime-player-lab7-controls-pip-20261029]
   workflow_dispatch:
 jobs:
   android:
@@ -22,16 +22,26 @@ jobs:
       - name: Validate same-session live player JavaScript
         run: |
           node --check app/src/main/assets/same_player.js
+          node --check app/src/main/assets/vod_popup.js
           python3 - <<'PY'
           from pathlib import Path
           main=Path('app/src/main/java/com/primeapps/webplayer/MainActivity.java').read_text()
           js=Path('app/src/main/assets/same_player.js').read_text()
+          vod=Path('app/src/main/assets/vod_popup.js').read_text()
           assert 'public void playLive(String url,String title,String format)' in main
           assert 'useSamePlayer(false);' in main
           assert 'useSamePlayer(true);' in main
           assert 'srcObject' in js and 'currentVideo()' in js
           assert 'video.pause()' in js and 'video.play()' in js
-          print('LAB6 same-player static contract passed')
+          assert 'void popupWebVideo()' in main
+          assert 'loadVodPopupScript()' in main
+          assert 'ic_popup_sync' not in main
+          assert 'new ImageButton' not in main
+          assert 'playPopupVod(' in main
+          assert 'PrimeAppsVodPopup' in vod and 'pictureInPicture' not in vod
+          assert 'kind: kind === "vod"' in js
+          assert 'primeapps-native-vod-result' in js
+          print('LAB7 same-player static contract passed')
           PY
       - name: Compile and package debug signed and release unsigned
         run: gradle --no-daemon :app:assembleDebug :app:assembleRelease
@@ -43,13 +53,13 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -E "package:|application-label:|sdkVersion:|targetSdkVersion:"
       - uses: actions/upload-artifact@v4
         with:
-          name: PRIME_PLAYER_LAB6_ASSINADO_TESTE
+          name: PRIME_PLAYER_LAB7_ASSINADO_TESTE
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
-          name: PRIME_PLAYER_LAB6_RELEASE_SEM_ASSINAR
+          name: PRIME_PLAYER_LAB7_RELEASE_SEM_ASSINAR
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: error
           retention-days: 14
