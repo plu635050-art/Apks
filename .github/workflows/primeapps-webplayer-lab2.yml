@@ -1,7 +1,7 @@
-name: Prime Player LAB9 - Original PWA WebView
+name: Prime Player LAB10 - Performance Diagnostics
 on:
   push:
-    branches: [fix/prime-player-lab9-original-pwa-webview-20261029]
+    branches: [perf/prime-player-lab10-webview-20261029]
   workflow_dispatch:
 jobs:
   build:
@@ -43,7 +43,16 @@ jobs:
           for name in ('NativeVideoActivity.java', 'FloatingPlayback.java', 'StreamHttp.java'):
               assert not (Path('app/src/main/java/com/primeapps/webplayer') / name).exists(), name
           assert 'WebChromeClient' in main and 'setDomStorageEnabled(true)' in main
-          print('LAB9 OK: original PWA, no player overrides, no popup')
+          assert 'setCacheMode(WebSettings.LOAD_DEFAULT)' in main
+          assert 'onPageCommitVisible' in main
+          assert 'setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)' in main
+          assert 'MEDIA_TIMING_SCRIPT' in main
+          assert 'showDiagnostics()' in main
+          assert 'setMediaPlaybackRequiresUserGesture(false)' in main
+          assert 'addJavascriptInterface' not in main
+          assert 'getEntriesByType' in main
+          assert 'PRIME_PLAYER_LAB10' not in main
+          print('LAB10 OK: original PWA, no player overrides, no popup')
           PY
       - name: Compile signed debug and unsigned release
         run: gradle --no-daemon :app:assembleDebug :app:assembleRelease
@@ -55,13 +64,13 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -E "package:|application-label:|sdkVersion:|targetSdkVersion:"
       - uses: actions/upload-artifact@v4
         with:
-          name: PRIME_PLAYER_LAB9_ASSINADO_TESTE
+          name: PRIME_PLAYER_LAB10_ASSINADO_TESTE
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
-          name: PRIME_PLAYER_LAB9_SEM_ASSINAR
+          name: PRIME_PLAYER_LAB10_SEM_ASSINAR
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: error
           retention-days: 14
