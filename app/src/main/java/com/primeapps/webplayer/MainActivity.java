@@ -260,13 +260,13 @@ public final class MainActivity extends Activity {
             useSamePlayer(false,false,false);
         }
         @JavascriptInterface public void playPopup(String url,String title,String format) {
-            popupWebVideo(false);
+            MainActivity.this.popupWebVideo(false);
         }
         @JavascriptInterface public void playPopupVod(String url,String title,long startMs,String format) {
-            popupWebVideo(true);
+            MainActivity.this.popupWebVideo(true);
         }
         @JavascriptInterface public void popupWebVideo() {
-            popupWebVideo(true);
+            MainActivity.this.popupWebVideo(true);
         }
     }
     private String loadScript(String name) {
