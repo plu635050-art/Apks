@@ -1,7 +1,7 @@
-name: PrimeAppPlayer LAB4 PiP and Icon
+name: PrimeAppPlayer LAB5 TV recovery + VOD popup
 on:
   push:
-    branches: [lab/primeapps-webplayer-lab4-pip-20261029]
+    branches: [fix/prime-player-lab5-live-continuity-20261029]
   workflow_dispatch:
 jobs:
   android:
@@ -29,13 +29,13 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -E "package:|application-label:|sdkVersion:|targetSdkVersion:"
       - uses: actions/upload-artifact@v4
         with:
-          name: PRIME_PLAYER_LAB4_ASSINADO_TESTE
+          name: PRIME_PLAYER_LAB5_ASSINADO_TESTE
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
-          name: PRIME_PLAYER_LAB4_RELEASE_SEM_ASSINAR
+          name: PRIME_PLAYER_LAB5_RELEASE_SEM_ASSINAR
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: error
           retention-days: 14
