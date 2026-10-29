@@ -7,6 +7,11 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Build;
+import android.os.SystemClock;
+import android.util.Log;
+import android.content.pm.PackageInfo;
+import org.json.JSONObject;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
@@ -39,6 +44,25 @@ public final class MainActivity extends Activity {
     private View customFullscreenView;
     private WebChromeClient.CustomViewCallback customFullscreenCallback;
     private ValueCallback<Uri[]> fileCallback;
+    private long lastPageStartMs = 0L;
+    private long lastFirstPaintMs = 0L;
+    private long lastPageFinishedMs = 0L;
+    private String lastMainFrameHttpError = "";
+    private static final String PERF_TAG = "PrimePlayerPerf";
+
+    // Passive diagnostics only: no URL substitution, custom player, overlays or media controls.
+    // Works with old JavaScript engines (Android 5) and never stores media URLs or credentials.
+    private static final String MEDIA_TIMING_SCRIPT =
+        "(function(){if(window.__primePerf)return;" +
+        "var d={start:0,first:0,stalls:0,waiting:0,playing:0,loadEvents:0};" +
+        "window.__primePerf=d;" +
+        "document.addEventListener('loadstart',function(e){if(e.target && e.target.tagName==='VIDEO'){" +
+        "d.start=Date.now();d.loadEvents++;}},true);" +
+        "document.addEventListener('waiting',function(e){if(e.target && e.target.tagName==='VIDEO'){" +
+        "d.stalls++;d.waiting=Date.now();}},true);" +
+        "document.addEventListener('playing',function(e){if(e.target && e.target.tagName==='VIDEO'){" +
+        "d.playing=Date.now();if(d.start && !d.first)d.first=d.playing-d.start;d.waiting=0;}},true);" +
+        "})();";
 
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
@@ -65,6 +89,13 @@ public final class MainActivity extends Activity {
         setContentView(container);
 
         web = new WebView(this);
+        // Chromium cache/Service Worker are owned by the PWA. Never force
+        // cache-else-network: playlists, sessions and streaming URLs must stay fresh.
+        if (Build.VERSION.SDK_INT >= 26) {
+            // Android's default priority is IMPORTANT. Make that invariant explicit
+            // so the visible player renderer is not deprioritized on low-memory TVs.
+            web.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false);
+        }
         web.setBackgroundColor(Color.rgb(8, 6, 8));
         web.setFocusable(true);
         web.setFocusableInTouchMode(true);
@@ -102,11 +133,41 @@ public final class MainActivity extends Activity {
             }
             @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                lastPageStartMs = SystemClock.elapsedRealtime();
+                lastFirstPaintMs = 0;
+                lastPageFinishedMs = 0;
+                lastMainFrameHttpError = "";
                 if (progress != null) progress.setVisibility(View.VISIBLE);
             }
             @Override
+            public void onPageCommitVisible(WebView view, String url) {
+                // First actually visible page pixels can be shown before slower
+                // images/secondary resources finish, without changing the site.
+                if (Build.VERSION.SDK_INT >= 23) {
+                    if (lastPageStartMs > 0 && lastFirstPaintMs == 0)
+                        lastFirstPaintMs = SystemClock.elapsedRealtime() - lastPageStartMs;
+                    if (progress != null) progress.setVisibility(View.GONE);
+                }
+            }
+            @Override
             public void onPageFinished(WebView view, String url) {
+                if (lastPageStartMs > 0)
+                    lastPageFinishedMs = SystemClock.elapsedRealtime() - lastPageStartMs;
                 if (progress != null) progress.setVisibility(View.GONE);
+                if (isFirstParty(Uri.parse(url))) {
+                    // Read-only performance probe: listens for video events, never
+                    // alters the player, src, HLS.js or mpegts.js lifecycle.
+                    view.evaluateJavascript(MEDIA_TIMING_SCRIPT, null);
+                }
+                Log.i(PERF_TAG, "Navigation firstPaintMs=" + lastFirstPaintMs
+                        + " pageFinishedMs=" + lastPageFinishedMs);
+            }
+            @Override
+            public void onReceivedHttpError(WebView view, WebResourceRequest request,
+                                            android.webkit.WebResourceResponse response) {
+                if (request.isForMainFrame()) {
+                    lastMainFrameHttpError = "HTTP " + response.getStatusCode();
+                }
             }
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
@@ -184,17 +245,66 @@ public final class MainActivity extends Activity {
         web.requestFocus();
     }
 
+    private void showDiagnostics() {
+        if (web == null) return;
+        String provider = "Sistema WebView";
+        if (Build.VERSION.SDK_INT >= 26) {
+            try {
+                PackageInfo pkg = WebView.getCurrentWebViewPackage();
+                if (pkg != null) provider = pkg.packageName + " " + pkg.versionName;
+            } catch (Exception ignored) {}
+        }
+        final String webViewVersion = provider;
+        final String code =
+            "(function(){try{var p=window.__primePerf||{};" +
+            "var n=performance.getEntriesByType?performance.getEntriesByType('navigation'):[];" +
+            "var v=n&&n.length?n[0]:null;" +
+            "return JSON.stringify({mediaMs:p.first||0,stalls:p.stalls||0," +
+            "loadEvents:p.loadEvents||0,domMs:v?Math.round(v.domContentLoadedEventEnd):0," +
+            "serviceWorker:!!(navigator.serviceWorker&&navigator.serviceWorker.controller)});" +
+            "}catch(e){return '{}';}})()";
+        web.evaluateJavascript(code, value -> {
+            long mediaMs = 0;
+            long stalls = 0;
+            long loaded = 0;
+            long domMs = 0;
+            boolean sw = false;
+            try {
+                String jsonString = (String) new org.json.JSONTokener(value).nextValue();
+                JSONObject json = new JSONObject(jsonString);
+                mediaMs = json.optLong("mediaMs", 0);
+                stalls = json.optLong("stalls", 0);
+                loaded = json.optLong("loadEvents", 0);
+                domMs = json.optLong("domMs", 0);
+                sw = json.optBoolean("serviceWorker", false);
+            } catch (Exception ignored) {}
+            String message = "WebView: " + webViewVersion +
+                "\nPrimeira imagem: " + (lastFirstPaintMs > 0 ? lastFirstPaintMs + " ms" : "não medido") +
+                "\nPágina finalizada: " + lastPageFinishedMs + " ms" +
+                "\nDOM pronto: " + domMs + " ms" +
+                "\nVídeo: " + (mediaMs > 0 ? mediaMs + " ms até reproduzir" : "não medido") +
+                "\nCarregamentos de vídeo: " + loaded +
+                "\nTravamentos registrados: " + stalls +
+                "\nService Worker ativo: " + (sw ? "sim" : "não") +
+                (lastMainFrameHttpError.isEmpty() ? "" : "\nPágina: " + lastMainFrameHttpError);
+            new AlertDialog.Builder(this).setTitle("Diagnóstico de carregamento")
+                .setMessage(message).setPositiveButton("Fechar", null).show();
+        });
+    }
+
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_F5) {
             if (customFullscreenView == null) {
                 new AlertDialog.Builder(this)
                     .setTitle("Prime Player")
-                    .setItems(new String[] {"Atualizar página", "Início", "Sair"}, (dialog, which) -> {
-                        if (which == 0) reloadWebsite();
-                        else if (which == 1 && web != null) web.loadUrl(START_URL);
-                        else if (which == 2) finish();
-                    })
+                    .setItems(new String[] {"Atualizar página", "Início", "Diagnóstico", "Sair"},
+                        (dialog, which) -> {
+                            if (which == 0) reloadWebsite();
+                            else if (which == 1 && web != null) web.loadUrl(START_URL);
+                            else if (which == 2) showDiagnostics();
+                            else if (which == 3) finish();
+                        })
                     .show();
             }
             return true;
