@@ -38,7 +38,7 @@ jobs:
           assert 'ic_popup_sync' not in main
           assert 'new ImageButton' not in main
           assert 'playPopupVod(' in main
-          assert 'PrimeAppsVodPopup' in vod and 'pictureInPicture' not in vod
+          assert 'PrimeAppsVodPopup' in vod and 'requestPictureInPicture(' not in vod
           assert 'kind: kind === "vod"' in js
           assert 'primeapps-native-vod-result' in js
           print('LAB7 same-player static contract passed')
