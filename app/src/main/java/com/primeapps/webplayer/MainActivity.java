@@ -14,6 +14,10 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.content.res.AssetManager;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
@@ -38,6 +42,7 @@ public final class MainActivity extends Activity {
     private static final int VIDEO_REQUEST=882;
     private static final int LIVE_REQUEST=883;
     private boolean nativeVideoOpen=false;
+    private String samePlayerScript;
     private FloatingPlayback floatingPlayback;
     private FrameLayout root;
     private WebView browser;
@@ -95,6 +100,10 @@ public final class MainActivity extends Activity {
             }
             @Override public void onPageFinished(WebView view,String url) {
                 if(loading!=null)loading.setVisibility(View.GONE);
+                if(isInternal(Uri.parse(url))){
+                    String script=loadSamePlayerScript();
+                    if(script!=null)view.evaluateJavascript(script,null);
+                }
             }
             @Override public void onReceivedError(WebView view,WebResourceRequest req,WebResourceError error) {
                 if(req.isForMainFrame()) {
@@ -257,15 +266,53 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public void playVod(String url,String title,long startMs,String format){
             startNativePlayback(url,title,startMs,format,false);
         }
+        // Live TV is already playing through hls.js/mpegts.js on the same WebView video.
+        // Never open a second ExoPlayer connection merely to make it fullscreen.
         @JavascriptInterface public void playLive(String url,String title,String format){
-            startNativePlayback(url,title,0L,format,true);
+            useSamePlayer(false);
         }
         @JavascriptInterface public void playPopup(String url,String title,String format){
-            startNativePlayback(url,title,0L,format,true,true);
+            useSamePlayer(true);
         }
         @JavascriptInterface public void playPopupVod(String url,String title,long startMs,String format){
             startNativePlayback(url,title,startMs,format,false,true);
         }
+    }
+    private String loadSamePlayerScript(){
+        if(samePlayerScript!=null)return samePlayerScript;
+        try(InputStream stream=getAssets().open("same_player.js");
+            ByteArrayOutputStream out=new ByteArrayOutputStream()){
+            byte[] chunk=new byte[4096];
+            int n;
+            while((n=stream.read(chunk))!=-1)out.write(chunk,0,n);
+            samePlayerScript=new String(out.toByteArray(),StandardCharsets.UTF_8);
+            return samePlayerScript;
+        }catch(Exception ignored){return null;}
+    }
+    private void useSamePlayer(boolean popup){
+        runOnUiThread(()->{
+            if(browser==null||isFinishing()||nativeVideoOpen)return;
+            String current=browser.getUrl();
+            if(current==null || !isInternal(Uri.parse(current)))return;
+            String script=loadSamePlayerScript();
+            if(script==null){
+                browser.evaluateJavascript(
+                    "window.dispatchEvent(new CustomEvent('primeapps-native-live-result',{detail:{ok:false,status:'error',error:'SAME_PLAYER_SCRIPT_UNAVAILABLE'}}));",null);
+                return;
+            }
+            // Evaluate in the same page; do not create an Activity, ExoPlayer, or connection.
+            browser.evaluateJavascript(script,ignored->
+                browser.evaluateJavascript(
+                    "(window.PrimeAppsSamePlayer && window.PrimeAppsSamePlayer.enter('"+
+                    (popup?"popup":"fullscreen")+"')) || 'missing'",
+                    value->{
+                        if(value!=null && value.contains("missing")){
+                            browser.evaluateJavascript(
+                                "window.dispatchEvent(new CustomEvent('primeapps-native-live-result',{detail:{ok:false,status:'error',error:'ACTIVE_WEB_VIDEO_NOT_FOUND'}}));",null);
+                        }
+                    })
+            );
+        });
     }
     private void startNativePlayback(String url,String title,long startMs,String format,boolean live){
         startNativePlayback(url,title,startMs,format,live,false);
