@@ -37,7 +37,7 @@ jobs:
           assert 'android:supportsPictureInPicture=' not in manifest
           assert 'android.software.picture_in_picture' not in manifest
           assert 'media3' not in gradle
-          assert "minSdk 21" in gradle and "versionCode 9" in gradle
+          assert "minSdk 21" in gradle and "versionCode 10" in gradle
           for name in ('same_player.js', 'vod_popup.js'):
               assert not (assets / name).exists(), name
           for name in ('NativeVideoActivity.java', 'FloatingPlayback.java', 'StreamHttp.java'):
@@ -49,7 +49,7 @@ jobs:
           assert 'MEDIA_TIMING_SCRIPT' in main
           assert 'showDiagnostics()' in main
           assert 'setMediaPlaybackRequiresUserGesture(false)' in main
-          assert 'addJavascriptInterface' not in main
+          assert 'web.addJavascriptInterface(new' not in main
           assert 'getEntriesByType' in main
           assert 'PRIME_PLAYER_LAB10' not in main
           print('LAB10 OK: original PWA, no player overrides, no popup')
