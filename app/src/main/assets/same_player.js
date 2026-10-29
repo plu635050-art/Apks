@@ -58,7 +58,7 @@
     if (prior.backdrop.parentNode) prior.backdrop.parentNode.removeChild(prior.backdrop);
     if (prior.toolbar.parentNode) prior.toolbar.parentNode.removeChild(prior.toolbar);
     prior.video.controls = prior.oldControls;
-    fire("primeapps-native-live-result", {
+    fire(prior.kind === "vod" ? "primeapps-native-vod-result" : "primeapps-native-live-result", {
       ok: true, status: "closed", error: "", ended: false,
       positionMs: Math.max(0, Math.round((prior.video.currentTime || 0) * 1000)),
       samePlayer: true
@@ -109,7 +109,7 @@
       finish();
     }
   }
-  function enter(mode) {
+  function enter(mode, kind) {
     if (state) {
       resize(mode === "popup" ? "popup" : "fullscreen");
       return "same";
@@ -153,7 +153,7 @@
     var oldControls = video.controls;
     video.controls = true;
     state = {video:video, styles:styles, backdrop:backdrop, toolbar:toolbar,
-      sizeButton:sizeButton, oldControls:oldControls, mode:"", onKey:keyHandler};
+      sizeButton:sizeButton, oldControls:oldControls, mode:"", kind: kind === "vod" ? "vod" : "live", onKey:keyHandler};
     document.addEventListener("keydown", keyHandler, true);
     resize(mode === "popup" ? "popup" : "fullscreen");
     if (video.paused && !video.ended) {
