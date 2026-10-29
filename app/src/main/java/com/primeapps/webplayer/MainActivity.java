@@ -2,6 +2,14 @@ package com.primeapps.webplayer;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.PictureInPictureParams;
+import android.content.pm.PackageManager;
+import android.content.res.Configuration;
+import android.os.Build;
+import android.util.Rational;
+import android.graphics.drawable.GradientDrawable;
+import android.webkit.JsResult;
+import android.widget.TextView;
 import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
@@ -36,6 +44,9 @@ public final class MainActivity extends Activity {
     private ImageButton refresh;
     private ProgressBar loading;
     private View webFullscreen;
+    private FrameLayout webPopupWindow;
+    private TextView webPopupButton;
+    private boolean webPopupActive=false;
     private WebChromeClient.CustomViewCallback fullscreenCallback;
     private long lastMenuPress=0;
 
@@ -97,9 +108,27 @@ public final class MainActivity extends Activity {
                 if(webFullscreen!=null){callback.onCustomViewHidden();return;}
                 webFullscreen=view; fullscreenCallback=callback;
                 root.addView(view,new FrameLayout.LayoutParams(-1,-1));
-                refresh.setVisibility(View.GONE); fullscreen();
+                refresh.setVisibility(View.GONE);
+                showWebPopupButton();
+                fullscreen();
             }
             @Override public void onHideCustomView(){hideCustomVideo();}
+            @Override public boolean onJsConfirm(WebView view,String url,String message,JsResult result){
+                String m=message==null?"":message.toLowerCase(java.util.Locale.ROOT);
+                // The Lovable page already asks the user to use the web player on native failure.
+                // Agree automatically, avoiding a browser-origin dialog with the public URL.
+                if(m.contains("player nativo") && m.contains("player web")){
+                    result.confirm();
+                    return true;
+                }
+                new AlertDialog.Builder(MainActivity.this)
+                    .setMessage(message)
+                    .setNegativeButton("Cancelar",(d,w)->result.cancel())
+                    .setPositiveButton("OK",(d,w)->result.confirm())
+                    .setOnCancelListener(d->result.cancel())
+                    .show();
+                return true;
+            }
         });
         root.addView(browser,new FrameLayout.LayoutParams(-1,-1));
         loading=new ProgressBar(this);
@@ -120,14 +149,107 @@ public final class MainActivity extends Activity {
         return "https".equalsIgnoreCase(u.getScheme())&&TRUSTED_HOST.equalsIgnoreCase(u.getHost());
     }
     private void reload(){if(browser!=null){browser.reload();browser.requestFocus();}}
-    private void hideCustomVideo(){
-        if(webFullscreen!=null){
-            root.removeView(webFullscreen);webFullscreen=null;
-            WebChromeClient.CustomViewCallback cb=fullscreenCallback;fullscreenCallback=null;
-            if(cb!=null)cb.onCustomViewHidden();
+    private TextView videoButton(String title) {
+        TextView v=new TextView(this);
+        v.setText(title);
+        v.setGravity(Gravity.CENTER);
+        v.setTextColor(Color.WHITE);
+        v.setTextSize(14);
+        v.setFocusable(true);
+        GradientDrawable bg=new GradientDrawable();
+        bg.setColor(Color.argb(230,34,27,34));
+        bg.setStroke(dp(1),Color.rgb(254,42,63));
+        bg.setCornerRadius(dp(10));
+        v.setBackground(bg);
+        return v;
+    }
+    private void showWebPopupButton(){
+        if(webFullscreen==null || webPopupButton!=null) return;
+        webPopupButton=videoButton("▣ POP-UP");
+        webPopupButton.setContentDescription("Abrir filme em janela pop-up");
+        FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(dp(124),dp(44),
+                Gravity.TOP|Gravity.RIGHT);
+        p.topMargin=dp(12);
+        p.rightMargin=dp(14);
+        root.addView(webPopupButton,p);
+        webPopupButton.setOnClickListener(v->openWebPopup());
+    }
+    private void hideWebPopupButton(){
+        if(webPopupButton!=null){
+            root.removeView(webPopupButton);
+            webPopupButton=null;
         }
+    }
+    private void openWebPopup(){
+        if(webFullscreen==null) return;
+        if(Build.VERSION.SDK_INT>=26 &&
+           getPackageManager().hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)){
+            try {
+                PictureInPictureParams params=new PictureInPictureParams.Builder()
+                    .setAspectRatio(new Rational(16,9)).build();
+                if(enterPictureInPictureMode(params)){
+                    hideWebPopupButton();
+                    return;
+                }
+            }catch(Exception ignored){}
+        }
+        // Old Android/TV hardware: move only WebChrome fullscreen video over the web catalogue.
+        hideWebPopupButton();
+        root.removeView(webFullscreen);
+        webPopupWindow=new FrameLayout(this);
+        webPopupWindow.setBackgroundColor(Color.BLACK);
+        int width=Math.min(dp(340),getResources().getDisplayMetrics().widthPixels/2);
+        int height=Math.round(width*9f/16f)+dp(42);
+        FrameLayout.LayoutParams floating=new FrameLayout.LayoutParams(width,height,
+            Gravity.RIGHT|Gravity.BOTTOM);
+        floating.rightMargin=dp(12);
+        floating.bottomMargin=dp(15);
+        root.addView(webPopupWindow,floating);
+        FrameLayout.LayoutParams videoSize=new FrameLayout.LayoutParams(-1,-1);
+        videoSize.topMargin=dp(42);
+        webPopupWindow.addView(webFullscreen,videoSize);
+        TextView maximize=videoButton("⛶ Tela cheia");
+        FrameLayout.LayoutParams maxSize=new FrameLayout.LayoutParams(dp(125),dp(40),
+            Gravity.TOP|Gravity.LEFT);
+        webPopupWindow.addView(maximize,maxSize);
+        maximize.setOnClickListener(v->expandWebPopup());
+        TextView close=videoButton("✕ Fechar");
+        FrameLayout.LayoutParams closeSize=new FrameLayout.LayoutParams(dp(102),dp(40),
+            Gravity.TOP|Gravity.RIGHT);
+        webPopupWindow.addView(close,closeSize);
+        close.setOnClickListener(v->hideCustomVideo());
+        webPopupActive=true;
+    }
+    private void expandWebPopup(){
+        if(webPopupWindow==null || webFullscreen==null) return;
+        webPopupWindow.removeView(webFullscreen);
+        root.removeView(webPopupWindow);
+        webPopupWindow=null;
+        webPopupActive=false;
+        root.addView(webFullscreen,new FrameLayout.LayoutParams(-1,-1));
+        showWebPopupButton();
+    }
+    private void hideCustomVideo(){
+        hideWebPopupButton();
+        if(webPopupWindow!=null){
+            if(webFullscreen!=null)webPopupWindow.removeView(webFullscreen);
+            root.removeView(webPopupWindow);
+            webPopupWindow=null;
+        }else if(webFullscreen!=null){
+            root.removeView(webFullscreen);
+        }
+        webFullscreen=null;
+        webPopupActive=false;
+        WebChromeClient.CustomViewCallback cb=fullscreenCallback;
+        fullscreenCallback=null;
+        if(cb!=null)cb.onCustomViewHidden();
         if(refresh!=null)refresh.setVisibility(View.VISIBLE);
         fullscreen();
+    }
+    @Override public void onPictureInPictureModeChanged(boolean pip,Configuration config){
+        super.onPictureInPictureModeChanged(pip,config);
+        if(!pip && webFullscreen!=null && webPopupWindow==null)showWebPopupButton();
+        if(!pip)fullscreen();
     }
     // Explicit entry points: the website decides when a movie or live TV goes fullscreen.
     // TV mini-player remains in the WebView; no automatic URL or button interception.
@@ -140,6 +262,9 @@ public final class MainActivity extends Activity {
         }
         @JavascriptInterface public void playPopup(String url,String title,String format){
             startNativePlayback(url,title,0L,format,true,true);
+        }
+        @JavascriptInterface public void playPopupVod(String url,String title,long startMs,String format){
+            startNativePlayback(url,title,startMs,format,false,true);
         }
     }
     private void startNativePlayback(String url,String title,long startMs,String format,boolean live){
@@ -165,6 +290,7 @@ public final class MainActivity extends Activity {
             i.putExtra("format",format==null?"":format.substring(0,Math.min(24,format.length())));
             i.putExtra("isLive",live);
             i.putExtra("autoPopup",autoPopup);
+            i.putExtra("userAgent",browser.getSettings().getUserAgentString());
             try{
                 startActivityForResult(i,live?LIVE_REQUEST:VIDEO_REQUEST);
             }catch(Exception e){
@@ -185,7 +311,7 @@ public final class MainActivity extends Activity {
             if(url!=null && root!=null){
                 try{
                     floatingPlayback=new FloatingPlayback(this,root,url,format,pos,live,
-                        new FloatingPlayback.Callback(){
+                        browser.getSettings().getUserAgentString(),new FloatingPlayback.Callback(){
                             @Override public void onClosed(long endMs,String error){
                                 floatingPlayback=null;
                                 nativeVideoOpen=false;
@@ -267,7 +393,8 @@ public final class MainActivity extends Activity {
     }
     @Override protected void onPause(){
         if(floatingPlayback!=null)floatingPlayback.pauseForBackground();
-        if(browser!=null)browser.onPause();
+        if(browser!=null && !(Build.VERSION.SDK_INT>=26 && isInPictureInPictureMode()))
+            browser.onPause();
         super.onPause();
     }
     @Override protected void onDestroy(){
