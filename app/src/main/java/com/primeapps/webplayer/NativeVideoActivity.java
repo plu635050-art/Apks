@@ -101,7 +101,7 @@ public final class NativeVideoActivity extends Activity {
         popupButton.setBackground(btn);
         FrameLayout.LayoutParams buttonParams = new FrameLayout.LayoutParams(
                 dp(126), dp(48), Gravity.RIGHT | Gravity.TOP);
-        buttonParams.topMargin = dp(15);
+        buttonParams.topMargin = dp(70);
         buttonParams.rightMargin = dp(16);
         root.addView(popupButton, buttonParams);
         popupButton.setOnClickListener(v -> enterPopup());
