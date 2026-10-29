@@ -1,22 +1,22 @@
-# Prime Player LAB 5 — live recovery and web/VOD popup
+# Prime Player — LAB 6: mesma sessão no mini-player, tela cheia e pop-up
 
-**Android:** Java WebView + native Media3 ExoPlayer 1.8.1 (minSdk 21, targetSdk 35), appId `com.primeapps.webplayer`.
+## Causa evidenciada pelo vídeo
+No arquivo de teste, Band SP HD reproduz na grade do site e, após clicar em tela cheia, a Activity ExoPlayer (vídeo preto inicial) carrega outra sessão de mídia. Isso pode causar recusa por limite de sessões e mudança aparente de programação.
 
-## Live streaming reliability
-- HLS/DASH/TS streaming uses ExoPlayer's continuous segment loading; live streams are **not** downloaded as files to storage.
-- Both fullscreen and fallback floating players share a network configuration: web-compatible user-agent, WebView cookies when available, connection/read timeouts and larger bounded buffers.
-- Transient network drop, timeout, HTTP 408/429/5xx: limited automatic recovery in ExoPlayer with backoff, up to 4 recoveries per minute after Media3's normal load retries. It does not retry HTTP 401, 403, or 404 endlessly; these indicate unavailable or unauthorized resources.
-- On fatal error, return `primeapps-native-live-result` with `ok:false`, `status:"error"`, `error:"HTTP_<status>"` or a generic Media3 code. Do not show an ExoPlayer technical Toast or the Android WebView `A página em https://...` dialog for the known native→web fallback confirmation.
-- The Lovable site must handle that event (already reported implemented by Lovable) by offering/starting web fallback without losing the channel/catalog state.
+## Solução do APK
+- O método público `PrimeAppsNative.playLive(url,title,format)` **não inicia outro player nativo**. Ele usa `PrimeAppsSamePlayer.enter('fullscreen')` para ampliar o mesmo elemento `<video>` existente na WebView, sem alterar `src`, `currentSrc`, `MediaSource` ou instância Hls.js/mpegts.js.
+- `PrimeAppsNative.playPopup(url,title,format)` usa esse mesmo elemento em modo flutuante DENTRO do aplicativo, com controle de pausa, tela cheia e fechar; não cria outro socket.
+- O vídeo volta ao estilo inicial ao fechar (inclusive via botão Voltar/D-pad). Os favoritos, categorias, IndexedDB e histórico permanecem no mesmo site.
+- Se não houver elemento `<video>` ativo acessível (por exemplo, o site destruiu o elemento ao acionar fullscreen, ou a reprodução está em iframe isolado), retorna erro `ACTIVE_WEB_VIDEO_NOT_FOUND` e **não tenta abrir outra sessão silenciosamente**.
+- Filmes e séries preservam sua rota existente para o ExoPlayer nativo; este LAB altera somente o comportamento padrão de live TV.
 
-## Popup in movies and TV series
-- The native `NativeVideoActivity` always has POP-UP. This works only when the VOD playback is actually routed to the native bridge.
-- Added `window.PrimeAppsNative.playPopupVod(url,title,startPositionMs,format)` so Lovable can open VOD directly in the native PiP/floating player; `playVod(url,title,startPositionMs,format)` remains unchanged.
-- Added POP-UP to **WebChromeClient HTML5 fullscreen custom view**. If the site enters a genuine WebView HTML5 fullscreen mode, the native overlay button can enter system PiP (Android 8+ where supported) or resize the fullscreen custom view as an in-app popup on older Androids.
-- A React/CSS-only fullscreen player does NOT call WebChromeClient.onShowCustomView. Its POP-UP button must be added in the Lovable player UI and call `playPopupVod` or its own web PiP; Android code cannot infer the media URL from an arbitrary site with a blob: URL. Web-only streams/DRM that native ExoPlayer cannot access should remain in the web player.
+## A integração da Lovable é obrigatória para resultado integral
+O site publicado ainda precisa ser atualizado. A partir do mini-player, o botão Tela Cheia/POP-UP deve **manter montado o mesmo componente de vídeo e a instância Hls.js/mpegts.js**, mudando somente a apresentação/layout. Ao chamar `PrimeAppsNative.playLive` ou `playPopup`, NÃO execute `pause()`, `stopLoad()`, `destroy()`, `detachMedia()`, `removeAttribute('src')`, troque `key` de React nem remonte o componente. A ponte Android pode restaurar vídeo pausado, mas não ressuscita um Hls.js já destruído. No fechamento, `primeapps-native-live-result.detail.samePlayer === true`: não recrie a lista nem a conexão, apenas restaure o tamanho original.
 
-## Lovable instructions
-In the VOD full-screen React component add a focusable `POP-UP` control (D-pad accessible). When the current VOD stream has a legitimate direct URL, if `PrimeAppsNative?.playPopupVod` exists, pause the web media and invoke `playPopupVod(url,title,Math.round(currentTime*1000),format)`. Handle `primeapps-native-vod-result`: restore web playback and `continue watching` progress; if `ok:false`, fall back to web. Do not allow both video engines to play audio simultaneously. If the native bridge is absent, use the existing HTML5 player and platform PiP if supported. Do not hardcode an access token into the APK.
+Para máxima confiabilidade no próprio site (PWA, navegador, Android), é melhor que a Lovable implemente diretamente a alternância de tela cheia via CSS sobre o MESMO componente de vídeo; usar a ponte nativa é uma compatibilidade para a versão atual do site.
 
-## Verification
-GitHub Actions compiles debug and release, checks debug signature, minSdk, targetSdk. Playback needs real-world testing with authorized channel URLs on Android 5–16 and TV boxes. No guaranteed recovery when the server rejects a request or when the media URL expires.
+## Evitar falsas promessas
+Isto remove a abertura de um **segundo motor pelo botão live**, não corrige HTTP 403, permissões, URLs expiradas nem servidores que retornam somente um clipe .ts de 60 segundos. O modo live nativo separado, quando algum outro caminho o utilizar, continua sujeito às limitações de fonte da Media3. Testar no Android 5–16, TV Box e Fire TV.
+
+## CI
+Branch `fix/prime-player-lab6-live-source-20261029`; Gradle 8.13/AGP 8.13.2; Android mínimo 5.0 (minSdk21). GitHub Actions verifica sintaxe do helper JS, compila Java/recursos, valida assinatura debug e publica os dois APKs. Certificado debug não é chave de distribuição estável.

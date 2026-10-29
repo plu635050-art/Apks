@@ -1,7 +1,7 @@
-name: PrimeAppPlayer LAB5 TV recovery + VOD popup
+name: PrimeAppPlayer LAB6 Single Player Live
 on:
   push:
-    branches: [fix/prime-player-lab5-live-continuity-20261029]
+    branches: [fix/prime-player-lab6-live-source-20261029]
   workflow_dispatch:
 jobs:
   android:
@@ -19,6 +19,20 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
+      - name: Validate same-session live player JavaScript
+        run: |
+          node --check app/src/main/assets/same_player.js
+          python3 - <<'PY'
+          from pathlib import Path
+          main=Path('app/src/main/java/com/primeapps/webplayer/MainActivity.java').read_text()
+          js=Path('app/src/main/assets/same_player.js').read_text()
+          assert 'public void playLive(String url,String title,String format)' in main
+          assert 'useSamePlayer(false);' in main
+          assert 'useSamePlayer(true);' in main
+          assert 'srcObject' in js and 'currentVideo()' in js
+          assert 'video.pause()' in js and 'video.play()' in js
+          print('LAB6 same-player static contract passed')
+          PY
       - name: Compile and package debug signed and release unsigned
         run: gradle --no-daemon :app:assembleDebug :app:assembleRelease
       - name: Verify APKs exist
@@ -29,13 +43,13 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -E "package:|application-label:|sdkVersion:|targetSdkVersion:"
       - uses: actions/upload-artifact@v4
         with:
-          name: PRIME_PLAYER_LAB5_ASSINADO_TESTE
+          name: PRIME_PLAYER_LAB6_ASSINADO_TESTE
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
-          name: PRIME_PLAYER_LAB5_RELEASE_SEM_ASSINAR
+          name: PRIME_PLAYER_LAB6_RELEASE_SEM_ASSINAR
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: error
           retention-days: 14
