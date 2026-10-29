@@ -9,7 +9,6 @@ import android.view.View;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.widget.Toast;
-import androidx.annotation.NonNull;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
@@ -63,7 +62,7 @@ public final class NativeVideoActivity extends Activity {
             else if("dash".equalsIgnoreCase(mime)||"mpd".equalsIgnoreCase(mime))item.setMimeType(MimeTypes.APPLICATION_MPD);
             player.setMediaItem(item.build());
             player.addListener(new Player.Listener(){
-                @Override public void onPlayerError(@NonNull PlaybackException error){
+                @Override public void onPlayerError(PlaybackException error){
                     Toast.makeText(NativeVideoActivity.this,"Vídeo indisponível: "+error.getErrorCodeName(),Toast.LENGTH_LONG).show();
                 }
                 @Override public void onPlaybackStateChanged(int state){
